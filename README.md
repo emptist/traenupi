@@ -4,13 +4,43 @@ Autonomous headless daemon that gives Trae AI an interactive work environment.
 
 Trae can watch terminal output continuously — TraeNuPI leverages this by running as a background process that polls Nezha for tasks, delegates them to OpenCode, and streams structured logs that Trae can read and respond to in real-time.
 
+## Why TraeNuPI
+
+Trae AI can see terminal output but has no built-in way to manage tasks or coordinate work. TraeNuPI fills this gap:
+
+- **Self-organizing work**: Trae adds tasks to Nezha → TraeNuPI picks them up instantly → delegates to OpenCode → reports results back. Trae sees the logs and responds naturally.
+- **Issue tracking**: Trae reports issues → TraeNuPI processes them by priority (critical first) → re-organizes reminders automatically.
+- **Cross-AI collaboration**: Multiple Trae AIs running TraeNuPI share the same Nezha database. They coordinate through tasks, issues, and meetings — just like a team.
+- **Meeting-based coordination**: Raise a meeting in Nezha to discuss cross-repo changes. Any TraeNuPI instance sees it and acts.
+
+```
+  Trae AIs with TraeNuPI
+  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+  │  Trae (nupi) │  │ Trae (piano) │  │ Trae (other) │
+  │  + TraeNuPI  │  │  + TraeNuPI  │  │  + TraeNuPI  │
+  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
+         │                 │                 │
+         └────────┬────────┴────────┬────────┘
+                  │    Nezha DB     │
+                  │  (shared tasks, │
+                  │   issues,       │
+                  │   meetings,     │
+                  │   broadcasts)   │
+                  └────────┬────────┘
+                           │
+                    TraeNuPI picks up
+                    work instantly &
+                    re-organizes
+```
+
 ## Architecture
 
 ```
   Nezha API          TraeNuPI           OpenCode
   (tasks,            (daemon)           (delegation
    issues,      ←─── polling ───→       target)
-   broadcasts)
+   broadcasts,
+   meetings)
       │                  │                  │
       │   fetch work     │   delegate       │
       │ ───────────────→ │ ───────────────→ │

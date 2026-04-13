@@ -1,0 +1,23 @@
+{
+  "name": "@nezha/traenupi",
+  "version": "0.1.0",
+  "description": "Autonomous daemon that gives Trae AI an interactive work environment",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "traenupi": "./bin/traenupi"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc --watch",
+    "test": "node --test dist/test/"
+  },
+  "dependencies": {
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
+  }
+}

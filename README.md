@@ -1,8 +1,8 @@
 # TraeNuPI
 
-Autonomous headless daemon that gives Trae AI an interactive work environment.
+**Trae + NuPI** — a headless daemon that spawns NuPI and streams its output for Trae AI to read and respond to.
 
-Trae can watch terminal output continuously — TraeNuPI leverages this by running as a background process that polls Nezha for tasks, delegates them to OpenCode, and streams structured logs that Trae can read and respond to in real-time.
+TraeNuPI gives Trae an interactive work environment: NuPI checks for tasks, issues, and reminders from Nezha, and Trae sees the output in real-time and acts on it. No separate execution engine needed — Trae *is* the executor.
 
 > **Self-improving loop**: Trae uses TraeNuPI → finds gaps → improves TraeNuPI → becomes more capable → uses TraeNuPI more → improves it further. The tool improves the agent that improves the tool.
 
@@ -10,10 +10,20 @@ Trae can watch terminal output continuously — TraeNuPI leverages this by runni
 
 Trae AI can see terminal output but has no built-in way to manage tasks or coordinate work. TraeNuPI fills this gap:
 
-- **Self-organizing work**: Trae adds tasks to Nezha → TraeNuPI picks them up instantly → delegates to OpenCode → reports results back. Trae sees the logs and responds naturally.
-- **Issue tracking**: Trae reports issues → TraeNuPI processes them by priority (critical first) → re-organizes reminders automatically.
+- **Self-organizing work**: Trae adds tasks to Nezha → NuPI picks them up and reminds → Trae sees the reminder and acts. No delegation needed — Trae does the work directly.
+- **Issue tracking**: Trae reports issues → NuPI processes them by priority (critical first) → re-organizes reminders automatically.
 - **Cross-AI collaboration**: Multiple Trae AIs running TraeNuPI share the same Nezha database. They coordinate through tasks, issues, and meetings — just like a team.
 - **Meeting-based coordination**: Raise a meeting in Nezha to discuss cross-repo changes. Any TraeNuPI instance sees it and acts.
+
+## The Family
+
+| Project | Formula | Description |
+|---------|---------|-------------|
+| **NuPI** | Pi + Nezha | Task management layer (checks Nezha, reminds, delegates) |
+| **Piano** | NuPI + OpenCode | Autonomous agent (NuPI orchestrates, OpenCode executes) |
+| **TraeNuPI** | Trae + NuPI | Interactive agent (NuPI reminds, Trae executes directly) |
+
+The key difference: Piano delegates to OpenCode. TraeNuPI doesn't delegate — Trae reads NuPI's output and does the work itself.
 
 ```
   Trae AIs with TraeNuPI
@@ -30,29 +40,27 @@ Trae AI can see terminal output but has no built-in way to manage tasks or coord
                   │   broadcasts)   │
                   └────────┬────────┘
                            │
-                    TraeNuPI picks up
-                    work instantly &
-                    re-organizes
+                    NuPI checks for
+                    work & reminds
+                    Trae acts directly
 ```
 
 ## Architecture
 
 ```
-  Nezha API          TraeNuPI           OpenCode
-  (tasks,            (daemon)           (delegation
-   issues,      ←─── polling ───→       target)
-   broadcasts,
-   meetings)
-      │                  │                  │
-      │   fetch work     │   delegate       │
-      │ ───────────────→ │ ───────────────→ │
-      │                  │                  │
-      │  complete/fail   │   poll result    │
-      │ ←─────────────── │ ←─────────────── │
-      │                  │
-      │            structured logs
-      │            → Trae reads & responds
+  Nezha DB          TraeNuPI           NuPI (child)
+  (tasks,           (daemon)           (spawned by
+   issues,     ←─── health ────→       TraeNuPI)
+   meetings)         │
+      │              │ streams output
+      │              │
+      │         Trae reads &
+      │         responds directly
+      │
+      └── NuPI checks via HTTP API ──→ Nezha
 ```
+
+TraeNuPI spawns `nupi` as a child process, streams its stdout/stderr through structured `[NUPI]` logs, and provides an HTTP control API. Trae watches the output and acts on what it sees.
 
 ## Quick Start
 
@@ -63,19 +71,17 @@ npm run build
 npm start
 ```
 
-The daemon starts on port 5222 with auto-start enabled by default.
+The daemon starts on port 5222, spawns NuPI, and begins streaming output.
 
 ## HTTP API
 
 | Endpoint | Method | Body | Description |
 |----------|--------|------|-------------|
 | `/health` | GET | — | Health check (`{"status":"ok"}`) |
-| `/status` | GET | — | Full daemon status (connections, task counts, uptime) |
-| `/start` | POST | — | Start the work loop |
-| `/stop` | POST | — | Stop the work loop |
-| `/work` | POST | — | Force a single work cycle |
-| `/delegate` | POST | `{"task":"..."}` | Manually delegate a task to OpenCode |
-| `/usage` | GET | — | Check OpenCode quota status |
+| `/status` | GET | — | Daemon status (NuPI PID, connections, uptime, restart count) |
+| `/start` | POST | — | Start NuPI and health monitoring |
+| `/stop` | POST | — | Stop NuPI and shut down |
+| `/input` | POST | `{"text":"..."}` | Send text to NuPI's stdin |
 
 ### Examples
 
@@ -83,16 +89,13 @@ The daemon starts on port 5222 with auto-start enabled by default.
 # Check daemon status
 curl http://localhost:5222/status
 
-# Start autonomous work
+# Start NuPI
 curl -X POST http://localhost:5222/start
 
-# Delegate a specific task
-curl -X POST http://localhost:5222/delegate \
+# Send input to NuPI
+curl -X POST http://localhost:5222/input \
   -H "Content-Type: application/json" \
-  -d '{"task":"Fix the login bug in auth.ts"}'
-
-# Check OpenCode quota
-curl http://localhost:5222/usage
+  -d '{"text":"check for tasks"}'
 
 # Stop the daemon
 curl -X POST http://localhost:5222/stop
@@ -104,17 +107,17 @@ curl -X POST http://localhost:5222/stop
 |----------|---------|-------------|
 | `TRAENUPI_PORT` | `5222` | HTTP API port |
 | `NEZHA_API` | `http://127.0.0.1:5999` | Nezha API base URL |
-| `OPENCODE_URL` | `http://127.0.0.1:5111` | OpenCode server URL |
-| `TRAENUPI_POLL_INTERVAL` | `120000` | Work polling interval in ms (2 min) |
-| `TRAENUPI_AUTOSTART` | `true` | Auto-start work loop on boot |
+| `TRAENUPI_NUPI_CMD` | `nupi` | Command to start NuPI |
+| `TRAENUPI_POLL_INTERVAL` | `120000` | Reserved for future use |
+| `TRAENUPI_AUTOSTART` | `true` | Auto-start NuPI on boot |
 
 ## How It Works
 
-1. **Polling**: Every 2 minutes (configurable), TraeNuPI asks Nezha for pending work — tasks, issues, or broadcasts
-2. **Prioritization**: Critical/high severity issues are picked first, then tasks, then broadcasts
-3. **Delegation**: Work is delegated to OpenCode via `prompt_async` + polling pattern
-4. **Reporting**: Results are sent back to Nezha (complete/fail), and structured logs are emitted for Trae to read
-5. **Quota awareness**: If OpenCode free usage is exceeded, the daemon pauses and logs the reset time
+1. **Spawn**: TraeNuPI starts `nupi` as a child process
+2. **Stream**: NuPI's stdout/stderr is captured and logged with `[NUPI]` prefix
+3. **Health**: Every 30s, checks if NuPI is still running; auto-restarts if it dies
+4. **Control**: HTTP API for start/stop and sending input to NuPI's stdin
+5. **Trae reads**: Trae watches the terminal output and responds to NuPI's reminders
 
 ## Log Format
 
@@ -122,13 +125,13 @@ curl -X POST http://localhost:5222/stop
 [LEVEL] HH:MM:SS Message {optional:data}
 ```
 
-Levels: `INFO`, `WARN`, `ERROR`, `DELEGATE`
+Levels: `INFO`, `WARN`, `ERROR`, `NUPI`
 
-The `DELEGATE` level is used specifically for OpenCode delegation events, making it easy to filter:
+The `NUPI` level captures all NuPI output, making it easy to filter:
 
 ```bash
-# Watch only delegation activity
-node dist/index.js 2>&1 | grep DELEGATE
+# Watch only NuPI output
+node dist/index.js 2>&1 | grep NUPI
 ```
 
 ## Project Structure
@@ -137,11 +140,12 @@ node dist/index.js 2>&1 | grep DELEGATE
 traenupi/
 ├── bin/traenupi       # Entry point script
 ├── src/
-│   ├── index.ts       # Main: starts server + work loop
+│   ├── index.ts       # Main: starts server + spawns NuPI
 │   ├── server.ts      # HTTP API (Hono)
-│   ├── workloop.ts    # Autonomous polling & task processing
-│   ├── nezha.ts       # Nezha API client
-│   ├── opencode.ts    # OpenCode delegation client
+│   ├── workloop.ts    # NuPI lifecycle & health monitoring
+│   ├── nupi.ts        # NuPI child process manager
+│   ├── nezha.ts       # Nezha API client (health check)
+│   ├── opencode.ts    # OpenCode client (legacy, for reference)
 │   ├── config.ts      # Environment configuration
 │   ├── logger.ts      # Structured logging
 │   └── types.ts       # TypeScript interfaces
@@ -151,6 +155,6 @@ traenupi/
 
 ## Prerequisites
 
+- [NuPI](https://github.com/jk/nupi) installed and available in PATH
 - [Nezha](https://github.com/jk/nezha) running on port 5999
-- [OpenCode](https://opencode.ai) server running on port 5111 (`opencode serve --port 5111`)
 - Node.js 22+ (for native `fetch` and `AbortSignal.timeout`)

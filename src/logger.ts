@@ -1,6 +1,6 @@
 import type { LogEntry } from "./types.js";
 
-const LOG_LEVELS = { info: "INFO", warn: "WARN", error: "ERROR", delegate: "DELEGATE" } as const;
+const LOG_LEVELS = { info: "INFO", warn: "WARN", error: "ERROR", nupi: "NUPI" } as const;
 
 export function log(level: LogEntry["level"], message: string, data?: unknown): void {
   const entry: LogEntry = {
@@ -18,5 +18,5 @@ export const logger = {
   info: (msg: string, data?: unknown) => log("info", msg, data),
   warn: (msg: string, data?: unknown) => log("warn", msg, data),
   error: (msg: string, data?: unknown) => log("error", msg, data),
-  delegate: (msg: string, data?: unknown) => log("delegate", msg, data),
+  nupi: (msg: string, data?: unknown) => log("nupi", msg, data),
 };

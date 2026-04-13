@@ -1,30 +1,11 @@
-export interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  priority?: number;
-  status: "pending" | "running" | "done" | "failed";
-  result?: string;
-  error?: string;
-  createdAt: number;
-  updatedAt: number;
-}
-
-export interface DelegateResult {
-  success: boolean;
-  output?: string;
-  error?: string;
-}
-
 export interface DaemonStatus {
   running: boolean;
   uptime: number;
-  tasksCompleted: number;
-  tasksFailed: number;
+  nupiPid: number | null;
+  nupiConnected: boolean;
   nezhaConnected: boolean;
-  opencodeConnected: boolean;
-  activeDelegations: number;
   lastActivity: string | null;
+  restartCount: number;
 }
 
 export interface NezhaWorkItem {
@@ -38,7 +19,13 @@ export interface NezhaWorkItem {
 
 export interface LogEntry {
   timestamp: string;
-  level: "info" | "warn" | "error" | "delegate";
+  level: "info" | "warn" | "error" | "nupi";
   message: string;
   data?: unknown;
+}
+
+export interface DelegateResult {
+  success: boolean;
+  output?: string;
+  error?: string;
 }

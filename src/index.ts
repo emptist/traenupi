@@ -5,15 +5,15 @@ import { start } from "./workloop.js";
 const SHUTDOWN_SIGNALS = ["SIGINT", "SIGTERM", "SIGQUIT"] as const;
 
 async function main(): Promise<void> {
-  logger.info("TraeNuPI v0.1.0 - Autonomous daemon for Trae AI");
-  logger.info("Headless mode: no TUI, output via structured logs");
+  logger.info("TraeNuPI v0.2.0 - Trae + NuPI daemon");
+  logger.info("Spawns NuPI, streams output for Trae to read");
   logger.info("Control: curl http://localhost:5222/status");
 
   await startServer();
 
   const autoStart = process.env.TRAENUPI_AUTOSTART !== "false";
   if (autoStart) {
-    logger.info("Auto-starting work loop...");
+    logger.info("Auto-starting NuPI...");
     await start();
   } else {
     logger.info("Auto-start disabled. POST /start to begin.");

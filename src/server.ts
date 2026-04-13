@@ -3,7 +3,6 @@ import { Hono } from "hono";
 import { getPort } from "./config.js";
 import * as workloop from "./workloop.js";
 import * as nezha from "./nezha.js";
-import * as opencode from "./opencode.js";
 import { logger } from "./logger.js";
 
 const app = new Hono();
@@ -13,7 +12,6 @@ app.get("/health", (c) => c.json({ status: "ok" }));
 app.get("/status", async (c) => {
   const status = workloop.getStatus();
   status.nezhaConnected = await nezha.isNezhaRunning();
-  status.opencodeConnected = await opencode.isOpenCodeRunning();
   return c.json(status);
 });
 
@@ -27,23 +25,13 @@ app.post("/stop", (c) => {
   return c.json({ ok: true, message: "daemon stopped" });
 });
 
-app.post("/work", async (c) => {
-  const result = await workloop.forceWork();
-  return c.json({ ok: true, result });
-});
-
-app.post("/delegate", async (c) => {
-  const body = await c.req.json<{ task: string }>();
-  if (!body.task) {
-    return c.json({ ok: false, error: "missing task" }, 400);
+app.post("/input", async (c) => {
+  const body = await c.req.json<{ text: string }>();
+  if (!body.text) {
+    return c.json({ ok: false, error: "missing text" }, 400);
   }
-  const result = await workloop.delegateTask(body.task);
-  return c.json({ ok: true, result });
-});
-
-app.get("/usage", async (c) => {
-  const usage = await opencode.checkUsage();
-  return c.json({ usage });
+  const ok = workloop.sendToNupi(body.text);
+  return c.json({ ok, message: ok ? "sent to nupi" : "nupi not running" });
 });
 
 export function startServer(): Promise<void> {

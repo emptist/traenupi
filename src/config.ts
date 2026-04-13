@@ -6,8 +6,8 @@ export function getNezhaApi(): string {
   return process.env.NEZHA_API || "http://127.0.0.1:5999";
 }
 
-export function getOpenCodeUrl(): string {
-  return process.env.OPENCODE_URL || "http://127.0.0.1:5111";
+export function getNupiCommand(): string {
+  return process.env.TRAENUPI_NUPI_CMD || "nupi";
 }
 
 export function getPollInterval(): number {

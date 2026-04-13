@@ -4,6 +4,8 @@ Autonomous headless daemon that gives Trae AI an interactive work environment.
 
 Trae can watch terminal output continuously — TraeNuPI leverages this by running as a background process that polls Nezha for tasks, delegates them to OpenCode, and streams structured logs that Trae can read and respond to in real-time.
 
+> **Self-improving loop**: Trae uses TraeNuPI → finds gaps → improves TraeNuPI → becomes more capable → uses TraeNuPI more → improves it further. The tool improves the agent that improves the tool.
+
 ## Why TraeNuPI
 
 Trae AI can see terminal output but has no built-in way to manage tasks or coordinate work. TraeNuPI fills this gap:

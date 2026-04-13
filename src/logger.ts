@@ -1,22 +1,18 @@
-import type { LogEntry } from "./types.js";
+const LOG_LEVELS = { info: "INFO", warn: "WARN", error: "ERROR" } as const;
 
-const LOG_LEVELS = { info: "INFO", warn: "WARN", error: "ERROR", nupi: "NUPI" } as const;
+type LogLevel = keyof typeof LOG_LEVELS;
 
-export function log(level: LogEntry["level"], message: string, data?: unknown): void {
-  const entry: LogEntry = {
-    timestamp: new Date().toISOString(),
-    level,
-    message,
-    data,
-  };
+function log(level: LogLevel, msg: string, data?: unknown): void {
+  const ts = new Date().toLocaleTimeString("en-US", { hour12: false });
   const prefix = LOG_LEVELS[level];
-  const dataStr = data ? ` ${JSON.stringify(data)}` : "";
-  console.log(`[${prefix}] ${entry.timestamp.slice(11, 19)} ${message}${dataStr}`);
+  const line = data !== undefined
+    ? `[${prefix}] ${ts} ${msg} ${JSON.stringify(data)}`
+    : `[${prefix}] ${ts} ${msg}`;
+  console.log(line);
 }
 
 export const logger = {
   info: (msg: string, data?: unknown) => log("info", msg, data),
   warn: (msg: string, data?: unknown) => log("warn", msg, data),
   error: (msg: string, data?: unknown) => log("error", msg, data),
-  nupi: (msg: string, data?: unknown) => log("nupi", msg, data),
 };

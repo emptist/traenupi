@@ -2,7 +2,6 @@ import { createServer } from "http";
 import { Hono } from "hono";
 import { getPort } from "./config.js";
 import * as workloop from "./workloop.js";
-import * as nezha from "./nezha.js";
 import { logger } from "./logger.js";
 
 const app = new Hono();
@@ -10,33 +9,38 @@ const app = new Hono();
 app.get("/health", (c) => c.json({ status: "ok" }));
 
 app.get("/status", async (c) => {
-  const status = workloop.getStatus();
-  status.nezhaConnected = await nezha.isNezhaRunning();
+  const status = await workloop.getStatus();
   return c.json(status);
 });
 
 app.post("/start", async (c) => {
   await workloop.start();
-  return c.json({ ok: true, message: "daemon started" });
+  return c.json({ ok: true, message: "started" });
 });
 
 app.post("/stop", (c) => {
   workloop.stop();
-  return c.json({ ok: true, message: "daemon stopped" });
+  return c.json({ ok: true, message: "stopped" });
 });
 
-app.post("/input", async (c) => {
-  const body = await c.req.json<{ text: string }>();
-  if (!body.text) {
-    return c.json({ ok: false, error: "missing text" }, 400);
-  }
-  const ok = workloop.sendToNupi(body.text);
-  return c.json({ ok, message: ok ? "sent to nupi" : "nupi not running" });
+app.get("/tasks", async (c) => {
+  const summary = await workloop.checkTasks();
+  return c.text(summary);
+});
+
+app.get("/issues", async (c) => {
+  const summary = await workloop.checkIssues();
+  return c.text(summary);
+});
+
+app.post("/work", async (c) => {
+  await workloop.forceWork();
+  return c.json({ ok: true });
 });
 
 export function startServer(): Promise<void> {
   const port = getPort();
-  logger.info(`Starting HTTP API on port ${port}`);
+  logger.info(`HTTP API on port ${port}`);
 
   return new Promise((resolve) => {
     createServer(async (req, res) => {
@@ -45,34 +49,24 @@ export function startServer(): Promise<void> {
       if (req.method !== "GET" && req.method !== "HEAD") {
         body = await new Promise<string>((resolveBody) => {
           let data = "";
-          req.on("data", (chunk: Buffer) => {
-            data += chunk;
-          });
+          req.on("data", (chunk: Buffer) => { data += chunk; });
           req.on("end", () => resolveBody(data));
         });
       }
 
       const headers = new Headers();
       for (const [key, value] of Object.entries(req.headers)) {
-        if (typeof value === "string") {
-          headers.set(key, value);
-        } else if (Array.isArray(value)) {
-          headers.set(key, value.join(", "));
-        }
+        if (typeof value === "string") headers.set(key, value);
+        else if (Array.isArray(value)) headers.set(key, value.join(", "));
       }
 
-      const request = new Request(url, {
-        method: req.method,
-        headers,
-        body,
-      });
-
+      const request = new Request(url, { method: req.method, headers, body });
       const response = await app.fetch(request);
       res.statusCode = response.status;
       response.headers.forEach((v, k) => res.setHeader(k, v));
       res.end(await response.text());
     }).listen(port, () => {
-      logger.info(`HTTP API listening on port ${port}`);
+      logger.info(`Listening on port ${port}`);
       resolve();
     });
   });

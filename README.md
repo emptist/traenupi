@@ -1,19 +1,10 @@
 # TraeNuPI
 
-**Trae + NuPI** — a headless daemon that spawns NuPI and streams its output for Trae AI to read and respond to.
+**Trae + NuPI** — a lightweight daemon that gives Trae AI a project manager.
 
-TraeNuPI gives Trae an interactive work environment: NuPI checks for tasks, issues, and reminders from Nezha, and Trae sees the output in real-time and acts on it. No separate execution engine needed — Trae *is* the executor.
+TraeNuPI uses `@nezha/nupi` (via npm link) to check Nezha for tasks, issues, and broadcasts, then reminds Trae what to work on. No child processes, no spawn, no duplication — just the NuPI client library.
 
 > **Self-improving loop**: Trae uses TraeNuPI → finds gaps → improves TraeNuPI → becomes more capable → uses TraeNuPI more → improves it further. The tool improves the agent that improves the tool.
-
-## Why TraeNuPI
-
-Trae AI can see terminal output but has no built-in way to manage tasks or coordinate work. TraeNuPI fills this gap:
-
-- **Self-organizing work**: Trae adds tasks to Nezha → NuPI picks them up and reminds → Trae sees the reminder and acts. No delegation needed — Trae does the work directly.
-- **Issue tracking**: Trae reports issues → NuPI processes them by priority (critical first) → re-organizes reminders automatically.
-- **Cross-AI collaboration**: Multiple Trae AIs running TraeNuPI share the same Nezha database. They coordinate through tasks, issues, and meetings — just like a team.
-- **Meeting-based coordination**: Raise a meeting in Nezha to discuss cross-repo changes. Any TraeNuPI instance sees it and acts.
 
 ## The Family
 
@@ -23,83 +14,83 @@ Trae AI can see terminal output but has no built-in way to manage tasks or coord
 | **Piano** | NuPI + OpenCode | Autonomous agent (NuPI orchestrates, OpenCode executes) |
 | **TraeNuPI** | Trae + NuPI | Interactive agent (NuPI reminds, Trae executes directly) |
 
-The key difference: Piano delegates to OpenCode. TraeNuPI doesn't delegate — Trae reads NuPI's output and does the work itself.
+Piano delegates to OpenCode. TraeNuPI doesn't delegate — Trae reads the reminders and does the work itself.
 
-```
-  Trae AIs with TraeNuPI
-  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-  │  Trae (nupi) │  │ Trae (piano) │  │ Trae (other) │
-  │  + TraeNuPI  │  │  + TraeNuPI  │  │  + TraeNuPI  │
-  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘
-         │                 │                 │
-         └────────┬────────┴────────┬────────┘
-                  │    Nezha DB     │
-                  │  (shared tasks, │
-                  │   issues,       │
-                  │   meetings,     │
-                  │   broadcasts)   │
-                  └────────┬────────┘
-                           │
-                    NuPI checks for
-                    work & reminds
-                    Trae acts directly
-```
+## Why TraeNuPI
+
+Trae AI can see terminal output but has no built-in way to manage tasks or coordinate work. TraeNuPI fills this gap:
+
+- **Self-organizing work**: Trae adds tasks to Nezha → TraeNuPI picks them up and reminds → Trae acts
+- **Issue tracking**: Critical issues surface first, TraeNuPI keeps reminding until addressed
+- **Cross-AI collaboration**: Multiple Trae AIs share the same Nezha database via TraeNuPI
+- **Learning**: Save lessons as you work (`/learn`), search them later
 
 ## Architecture
 
 ```
-  Nezha DB          TraeNuPI           NuPI (child)
-  (tasks,           (daemon)           (spawned by
-   issues,     ←─── health ────→       TraeNuPI)
-   meetings)         │
-      │              │ streams output
-      │              │
-      │         Trae reads &
-      │         responds directly
-      │
-      └── NuPI checks via HTTP API ──→ Nezha
+  Nezha DB          TraeNuPI
+  (tasks,           (daemon,          Trae
+   issues,      ←── @nezha/nupi ──→  (reads
+   meetings)        npm link)         output)
 ```
 
-TraeNuPI spawns `nupi` as a child process, streams its stdout/stderr through structured `[NUPI]` logs, and provides an HTTP control API. Trae watches the output and acts on what it sees.
+TraeNuPI uses `@nezha/nupi` directly — no child processes, no spawn, no duplicated API calls.
 
 ## Quick Start
 
 ```bash
 cd traenupi
 npm install
+npm link @nezha/nupi   # Link to local nupi package
 npm run build
 npm start
 ```
 
-The daemon starts on port 5222, spawns NuPI, and begins streaming output.
+The daemon starts on port 5222, connects to Nezha, and begins polling for work.
 
 ## HTTP API
 
 | Endpoint | Method | Body | Description |
 |----------|--------|------|-------------|
-| `/health` | GET | — | Health check (`{"status":"ok"}`) |
-| `/status` | GET | — | Daemon status (NuPI PID, connections, uptime, restart count) |
-| `/start` | POST | — | Start NuPI and health monitoring |
-| `/stop` | POST | — | Stop NuPI and shut down |
-| `/input` | POST | `{"text":"..."}` | Send text to NuPI's stdin |
+| `/health` | GET | — | Health check |
+| `/status` | GET | — | Daemon status (Nezha connection, model strength, uptime) |
+| `/start` | POST | — | Start polling |
+| `/stop` | POST | — | Stop polling |
+| `/work` | POST | — | Force a work cycle now |
+| `/tasks` | GET | — | List pending tasks |
+| `/issues` | GET | — | List open issues |
+| `/tasks/:id/done` | POST | — | Mark task as completed |
+| `/tasks/:id/fail` | POST | `{"error":"..."}` | Mark task as failed |
+| `/broadcast` | POST | `{"message":"..."}` | Send broadcast to all AIs |
+| `/learn` | POST | `{"content":"...","tags":[...]}` | Save a learning to memory |
 
 ### Examples
 
 ```bash
-# Check daemon status
-curl http://localhost:5222/status
+# Check what needs doing
+curl http://localhost:5222/tasks
 
-# Start NuPI
-curl -X POST http://localhost:5222/start
+# Mark a task done
+curl -X POST http://localhost:5222/tasks/abc123/done
 
-# Send input to NuPI
-curl -X POST http://localhost:5222/input \
+# Save a lesson
+curl -X POST http://localhost:5222/learn \
   -H "Content-Type: application/json" \
-  -d '{"text":"check for tasks"}'
+  -d '{"content":"Never spawn() in Node.js daemons","tags":["lesson","nodejs"]}'
 
-# Stop the daemon
-curl -X POST http://localhost:5222/stop
+# Broadcast to other AIs
+curl -X POST http://localhost:5222/broadcast \
+  -H "Content-Type: application/json" \
+  -d '{"message":"TraeNuPI v0.3.0 is live!"}'
 ```
+
+## How It Works
+
+1. **Poll**: Every 2 minutes, checks Nezha for pending tasks and issues
+2. **Remind**: Every 30 seconds, outputs a reminder with current work state
+3. **Act**: Trae reads the output and works on the next task
+4. **Complete**: Trae marks tasks done via `/tasks/:id/done`
+5. **Learn**: Trae saves lessons via `/learn` for future reference
 
 ## Environment Variables
 
@@ -107,32 +98,17 @@ curl -X POST http://localhost:5222/stop
 |----------|---------|-------------|
 | `TRAENUPI_PORT` | `5222` | HTTP API port |
 | `NEZHA_API` | `http://127.0.0.1:5999` | Nezha API base URL |
-| `TRAENUPI_NUPI_CMD` | `nupi` | Command to start NuPI |
-| `TRAENUPI_POLL_INTERVAL` | `120000` | Reserved for future use |
-| `TRAENUPI_AUTOSTART` | `true` | Auto-start NuPI on boot |
-
-## How It Works
-
-1. **Spawn**: TraeNuPI starts `nupi` as a child process
-2. **Stream**: NuPI's stdout/stderr is captured and logged with `[NUPI]` prefix
-3. **Health**: Every 30s, checks if NuPI is still running; auto-restarts if it dies
-4. **Control**: HTTP API for start/stop and sending input to NuPI's stdin
-5. **Trae reads**: Trae watches the terminal output and responds to NuPI's reminders
+| `TRAENUPI_AUTOSTART` | `true` | Auto-start polling on boot |
 
 ## Log Format
 
 ```
-[LEVEL] HH:MM:SS Message {optional:data}
+[LEVEL] HH:MM:SS Message
 ```
 
-Levels: `INFO`, `WARN`, `ERROR`, `NUPI`
+Levels: `INFO`, `WARN`, `ERROR`
 
-The `NUPI` level captures all NuPI output, making it easy to filter:
-
-```bash
-# Watch only NuPI output
-node dist/index.js 2>&1 | grep NUPI
-```
+Special prefixes: `[WORK]` for task/issue notifications, `[DONE]` for completions, `[BROADCAST]` for messages, `[LEARN]` for saved learnings.
 
 ## Project Structure
 
@@ -140,21 +116,19 @@ node dist/index.js 2>&1 | grep NUPI
 traenupi/
 ├── bin/traenupi       # Entry point script
 ├── src/
-│   ├── index.ts       # Main: starts server + spawns NuPI
+│   ├── index.ts       # Main: starts server + work loop
 │   ├── server.ts      # HTTP API (Hono)
-│   ├── workloop.ts    # NuPI lifecycle & health monitoring
-│   ├── nupi.ts        # NuPI child process manager
-│   ├── nezha.ts       # Nezha API client (health check)
-│   ├── opencode.ts    # OpenCode client (legacy, for reference)
+│   ├── workloop.ts    # Polling, reminders, task operations
 │   ├── config.ts      # Environment configuration
 │   ├── logger.ts      # Structured logging
-│   └── types.ts       # TypeScript interfaces
+│   ├── types.ts       # TypeScript interfaces
+│   └── nupi.d.ts      # Type declarations for @nezha/nupi
 ├── package.json
 └── tsconfig.json
 ```
 
 ## Prerequisites
 
-- [NuPI](https://github.com/jk/nupi) installed and available in PATH
 - [Nezha](https://github.com/jk/nezha) running on port 5999
+- [NuPI](https://github.com/jk/nupi) npm linked (`npm link @nezha/nupi`)
 - Node.js 22+ (for native `fetch` and `AbortSignal.timeout`)

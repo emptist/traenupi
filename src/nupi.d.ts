@@ -25,6 +25,11 @@ declare module "@nezha/nupi" {
     getBroadcasts(limit?: number): Promise<unknown[]>;
     sendBroadcast(message: string, options?: { to?: string; priority?: string }): Promise<{ id: string }>;
     createTask(data: { title: string; description?: string; priority?: number; category?: string }): Promise<{ id: string }>;
+    completeTask(taskId: string): Promise<{ id: string; status: string }>;
+    failTask(taskId: string, error: string): Promise<{ id: string; status: string }>;
     getSystemStatus(): Promise<{ pendingTasks: number; openIssues: number; memoryCount: number }>;
+    searchMemory(query: string, limit?: number): Promise<unknown[]>;
+    saveMemory(content: string, tags?: string[]): Promise<unknown>;
+    getBroadcastsDetailed(limit?: number): Promise<unknown>;
   }
 }

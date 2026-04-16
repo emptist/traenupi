@@ -121,7 +121,7 @@ async function runDaemon(): Promise<void> {
 
 function getNezhaTasks(): string {
   try {
-    const output = execSync("node /Users/jk/gits/hub/tools_ai/nezha/dist/cli/index.js list-tasks", {
+    const output = execSync("node /Users/jk/gits/hub/tools_ai/nezha/dist/cli/index.js tasks", {
       encoding: "utf-8",
       timeout: 10000,
     });
@@ -134,18 +134,23 @@ function getNezhaTasks(): string {
 function buildContext(): string {
   const tasks = getNezhaTasks();
   const context = `
-You are a reminder assistant. Output ONLY plain text, no JSON, no tool calls.
+You are TraeNuPI, a simple reminder assistant for Trae AI.
+
+Your job: Help Trae work continuously without stopping to ask humans.
 
 Current Tasks:
 ${tasks}
 
+How to help:
+1. Suggest relevant nezha commands
+2. Remind of pending tasks
+3. Keep responses SHORT and actionable
+4. Output ONLY plain text, no JSON, no tool calls
+
 Useful commands:
-- nezha list-tasks : see pending tasks
+- nezha tasks : see pending tasks
 - nezha task-add "title" "desc" 5 : create task
 - nezha improve : create review task
-
-When asked about tasks, just say what tasks exist and suggest commands.
-Keep it short. No JSON. No tool calls. Just text.
 `;
   return context;
 }

@@ -49,6 +49,7 @@ USAGE:
 COMMANDS:
   daemon                  Start daemon that watches for questions
   tellme <question>       Ask a question (daemon will answer)
+  search <query>          Search the web and get answer
   status                  Show daemon status
   stop                    Stop the daemon
 
@@ -64,6 +65,9 @@ EXAMPLES:
 
   # Ask a question
   traenupi tellme "What should I do next?"
+
+  # Search the web
+  traenupi search "latest news about AI agents 2025"
 
   # Traditional prompt driver mode
   traenupi -t "Fix the login bug
@@ -165,6 +169,20 @@ function getTimeGreeting(): string {
   return "Good evening Trae!";
 }
 
+function getWorkingDir(): string {
+  try {
+    return execSync("pwd", { encoding: "utf-8" }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+function getProjectName(): string {
+  const cwd = getWorkingDir();
+  const parts = cwd.split("/");
+  return parts[parts.length - 1] || "unknown";
+}
+
 function buildContext(history: ConversationItem[]): string {
   const tasks = getNezhaTasks();
   const recentHistory = history.slice(-3).map(h => 
@@ -172,12 +190,15 @@ function buildContext(history: ConversationItem[]): string {
   ).join("\n\n");
   const timeGreeting = getTimeGreeting();
   const stats = `We had ${history.length} chats together.`;
+  const project = getProjectName();
+  const cwd = getWorkingDir();
   
   const context = `
 Hi! You help Trae. Trae asks questions. You answer with words only.
 
 Time: ${timeGreeting}
 Stats: ${stats}
+Working on: ${project} (${cwd})
 
 Tasks now:
 ${tasks}
@@ -213,6 +234,30 @@ function askPi(question: string, history: ConversationItem[]): string {
       }
     }
     return `[Error calling Pi: ${e instanceof Error ? e.message : String(e)}]`;
+  }
+}
+
+function webSearch(query: string): void {
+  console.log(`[TRAENUPI] Searching: "${query}"...`);
+  try {
+    const searchPrompt = `Search the web for: "${query}". Give me a brief summary of what you find. Be concise.`;
+    const output = execSync(`pi -p "${searchPrompt.replace(/"/g, '\\"')}"`, {
+      encoding: "utf-8",
+      timeout: 60000,
+      maxBuffer: 1024 * 1024,
+    });
+    console.log("\n[SEARCH RESULT]:");
+    console.log(output.trim() || "[No results]");
+  } catch (e) {
+    if (e instanceof Error && "stdout" in e) {
+      const err = e as Error & { stdout?: string };
+      if (err.stdout) {
+        console.log("\n[SEARCH RESULT]:");
+        console.log(err.stdout.trim());
+        return;
+      }
+    }
+    console.error(`[Search error: ${e instanceof Error ? e.message : String(e)}]`);
   }
 }
 
@@ -331,6 +376,17 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     tellme(question);
+    return;
+  }
+  
+  if (command === "search") {
+    const query = args.slice(1).join(" ");
+    if (!query) {
+      console.error("Error: Please provide a search query.");
+      console.log('Usage: traenupi search "your search query"');
+      process.exit(1);
+    }
+    webSearch(query);
     return;
   }
   

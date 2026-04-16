@@ -251,6 +251,31 @@ function getProjectName(): string {
   return parts[parts.length - 1] || "unknown";
 }
 
+function getXcomStats(): string {
+  try {
+    const queueFile = join(homedir(), ".xcom", "queue.json");
+    if (!existsSync(queueFile)) return "xcom not set up yet.";
+    
+    const queue: Array<{status: string; content: string}> = JSON.parse(readFileSync(queueFile, "utf-8"));
+    const total = queue.length;
+    const posted = queue.filter(t => t.status === "posted").length;
+    const pending = queue.filter(t => t.status === "pending").length;
+    
+    const topicsFile = join(homedir(), ".xcom", "topics.json");
+    let topicInfo = "";
+    if (existsSync(topicsFile)) {
+      const topics: {topics: string[]; currentIndex: number} = JSON.parse(readFileSync(topicsFile, "utf-8"));
+      if (topics.topics.length > 0) {
+        topicInfo = ` Next topic: ${topics.topics[topics.currentIndex]}`;
+      }
+    }
+    
+    return `${total} tweets (${posted} posted, ${pending} pending).${topicInfo}`;
+  } catch {
+    return "xcom stats unavailable.";
+  }
+}
+
 function buildContext(history: ConversationItem[], currentQuestion?: string): string {
   const tasks = getNezhaTasks();
   const recentHistory = history.slice(-3).map(h => 
@@ -260,6 +285,7 @@ function buildContext(history: ConversationItem[], currentQuestion?: string): st
   const stats = `We had ${history.length} chats together.`;
   const project = getProjectName();
   const cwd = getWorkingDir();
+  const xcom = getXcomStats();
   
   let moodInfo = "";
   if (currentQuestion) {
@@ -274,6 +300,7 @@ Hi! You help Trae. Trae asks questions. You answer with words only.
 Time: ${timeGreeting}
 Stats: ${stats}${moodInfo}
 Working on: ${project} (${cwd})
+Xcom: ${xcom}
 
 Tasks now:
 ${tasks}

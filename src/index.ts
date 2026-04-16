@@ -121,7 +121,22 @@ async function runDaemon(): Promise<void> {
       
       unlinkSync(QUESTION_FILE);
       
-      const answer = askPi(question, history);
+      let answer = "";
+      let retries = 0;
+      const maxRetries = 2;
+      
+      while (retries <= maxRetries) {
+        answer = askPi(question, history);
+        
+        if (!answer.startsWith("[Error") && !answer.startsWith("[Pi timed out")) {
+          break;
+        }
+        
+        retries++;
+        if (retries <= maxRetries) {
+          console.log(`[RETRY ${retries}/${maxRetries}] Retrying...`);
+        }
+      }
       
       history.push({ question, answer, time: Date.now() });
       saveHistory(history);
@@ -283,8 +298,9 @@ function askPi(question: string, history: ConversationItem[]): string {
     const fullPrompt = `${context}\n\nQuestion: ${question}`;
     const output = execSync(`pi -p "${fullPrompt.replace(/"/g, '\\"')}"`, {
       encoding: "utf-8",
-      timeout: 60000,
+      timeout: 45000,
       maxBuffer: 1024 * 1024,
+      killSignal: "SIGTERM",
     });
     return output.trim() || "[Pi returned empty response]";
   } catch (e) {
@@ -294,7 +310,11 @@ function askPi(question: string, history: ConversationItem[]): string {
         return err.stdout.trim();
       }
     }
-    return `[Error calling Pi: ${e instanceof Error ? e.message : String(e)}]`;
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg.includes("timed out")) {
+      return "[Pi timed out. Try again with a shorter question.]";
+    }
+    return `[Error calling Pi: ${msg}]`;
   }
 }
 

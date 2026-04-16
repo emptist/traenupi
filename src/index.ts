@@ -1,11 +1,15 @@
 import { parseArgs } from "node:util";
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { homedir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { createDriver } from "./driver.js";
 import { createTask, loadTask } from "./task.js";
 import type { DriverConfig } from "./types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
 
 const TRAENUPI_DIR = join(homedir(), ".traenupi");
 const QUESTION_FILE = join(TRAENUPI_DIR, "question.txt");
@@ -41,7 +45,7 @@ function ensureDir(): void {
 
 function printUsage(): void {
   console.log(`
-traenupi - AI Companion for Trae
+traenupi v${VERSION} - AI Companion for Trae
 
 USAGE:
   traenupi <command> [options]
@@ -52,6 +56,7 @@ COMMANDS:
   search <query>          Search the web and get answer
   status                  Show daemon status
   stop                    Stop the daemon
+  version                 Show version
 
 PROMPT DRIVER MODE:
   -t, --task <desc>       Task description (first line = goal, rest = steps)
@@ -466,6 +471,11 @@ async function main(): Promise<void> {
   
   if (args.length === 0 || args[0] === "-h" || args[0] === "--help") {
     printUsage();
+    process.exit(0);
+  }
+  
+  if (args[0] === "-v" || args[0] === "--version" || args[0] === "version") {
+    console.log(`traenupi v${VERSION}`);
     process.exit(0);
   }
   

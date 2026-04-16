@@ -119,9 +119,42 @@ async function runDaemon(): Promise<void> {
   });
 }
 
+function getNezhaTasks(): string {
+  try {
+    const output = execSync("node /Users/jk/gits/hub/tools_ai/nezha/dist/cli/index.js list-tasks", {
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+    return output.trim();
+  } catch (e) {
+    return `[Could not get nezha tasks: ${e instanceof Error ? e.message : String(e)}]`;
+  }
+}
+
+function buildContext(): string {
+  const tasks = getNezhaTasks();
+  const context = `
+You are a reminder assistant. Output ONLY plain text, no JSON, no tool calls.
+
+Current Tasks:
+${tasks}
+
+Useful commands:
+- nezha list-tasks : see pending tasks
+- nezha task-add "title" "desc" 5 : create task
+- nezha improve : create review task
+
+When asked about tasks, just say what tasks exist and suggest commands.
+Keep it short. No JSON. No tool calls. Just text.
+`;
+  return context;
+}
+
 function askPi(question: string): string {
   try {
-    const output = execSync(`pi -p "${question.replace(/"/g, '\\"')}"`, {
+    const context = buildContext();
+    const fullPrompt = `${context}\n\nQuestion: ${question}`;
+    const output = execSync(`pi -p "${fullPrompt.replace(/"/g, '\\"')}"`, {
       encoding: "utf-8",
       timeout: 60000,
       maxBuffer: 1024 * 1024,

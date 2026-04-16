@@ -169,6 +169,59 @@ function getTimeGreeting(): string {
   return "Good evening Trae!";
 }
 
+function detectMood(text: string): string {
+  const lowerText = text.toLowerCase();
+  
+  const happyWords = ["great", "awesome", "love", "happy", "excited", "amazing", "wonderful", "fantastic", "yay", "wow", "cool", "nice", "good", "success", "complete", "finished"];
+  const sadWords = ["sad", "unhappy", "depressed", "down", "bad", "fail", "failed", "error", "problem", "issue", "stuck", "frustrated", "annoyed", "tired", "exhausted"];
+  const stressedWords = ["deadline", "urgent", "asap", "hurry", "rush", "pressure", "stress", "overwhelmed", "too much", "busy", "help", "need"];
+  const curiousWords = ["what", "how", "why", "when", "where", "which", "can", "could", "should", "wonder", "curious", "learn", "understand"];
+  const determinedWords = ["will", "going to", "must", "have to", "need to", "let's", "ready", "start", "begin", "continue", "work on"];
+  
+  let happyScore = 0;
+  let sadScore = 0;
+  let stressedScore = 0;
+  let curiousScore = 0;
+  let determinedScore = 0;
+  
+  for (const word of happyWords) {
+    if (lowerText.includes(word)) happyScore++;
+  }
+  for (const word of sadWords) {
+    if (lowerText.includes(word)) sadScore++;
+  }
+  for (const word of stressedWords) {
+    if (lowerText.includes(word)) stressedScore++;
+  }
+  for (const word of curiousWords) {
+    if (lowerText.includes(word)) curiousScore++;
+  }
+  for (const word of determinedWords) {
+    if (lowerText.includes(word)) determinedScore++;
+  }
+  
+  const maxScore = Math.max(happyScore, sadScore, stressedScore, curiousScore, determinedScore);
+  
+  if (maxScore === 0) return "neutral";
+  if (happyScore === maxScore) return "happy";
+  if (sadScore === maxScore) return "sad";
+  if (stressedScore === maxScore) return "stressed";
+  if (curiousScore === maxScore) return "curious";
+  if (determinedScore === maxScore) return "determined";
+  return "neutral";
+}
+
+function getMoodEmoji(mood: string): string {
+  switch (mood) {
+    case "happy": return "😊";
+    case "sad": return "😢";
+    case "stressed": return "😰";
+    case "curious": return "🤔";
+    case "determined": return "💪";
+    default: return "😐";
+  }
+}
+
 function getWorkingDir(): string {
   try {
     return execSync("pwd", { encoding: "utf-8" }).trim();
@@ -183,7 +236,7 @@ function getProjectName(): string {
   return parts[parts.length - 1] || "unknown";
 }
 
-function buildContext(history: ConversationItem[]): string {
+function buildContext(history: ConversationItem[], currentQuestion?: string): string {
   const tasks = getNezhaTasks();
   const recentHistory = history.slice(-3).map(h => 
     `Q: ${h.question}\nA: ${h.answer}`
@@ -193,11 +246,18 @@ function buildContext(history: ConversationItem[]): string {
   const project = getProjectName();
   const cwd = getWorkingDir();
   
+  let moodInfo = "";
+  if (currentQuestion) {
+    const mood = detectMood(currentQuestion);
+    const emoji = getMoodEmoji(mood);
+    moodInfo = `\nTrae's mood: ${mood} ${emoji}`;
+  }
+  
   const context = `
 Hi! You help Trae. Trae asks questions. You answer with words only.
 
 Time: ${timeGreeting}
-Stats: ${stats}
+Stats: ${stats}${moodInfo}
 Working on: ${project} (${cwd})
 
 Tasks now:
@@ -210,6 +270,7 @@ Say things like:
 - "You have tasks to do."
 - "Run nezha tasks to see them."
 - "Good job!"
+- Match Trae's mood - be happy when happy, supportive when sad, calm when stressed.
 
 Do NOT use JSON. Do NOT use curly braces. Just talk like a friend.
 `;
@@ -218,7 +279,7 @@ Do NOT use JSON. Do NOT use curly braces. Just talk like a friend.
 
 function askPi(question: string, history: ConversationItem[]): string {
   try {
-    const context = buildContext(history);
+    const context = buildContext(history, question);
     const fullPrompt = `${context}\n\nQuestion: ${question}`;
     const output = execSync(`pi -p "${fullPrompt.replace(/"/g, '\\"')}"`, {
       encoding: "utf-8",

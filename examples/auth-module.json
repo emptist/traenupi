@@ -1,0 +1,61 @@
+{
+  "goal": "Build and ship the authentication module",
+  "steps": [
+    {
+      "description": "Design the auth data model and API contract",
+      "verification": [
+        "Schema is defined with all required fields",
+        "API endpoints are documented",
+        "Error response formats are specified"
+      ],
+      "edgeCases": [
+        "Token expiration handling",
+        "Concurrent session management",
+        "Invalid credential format"
+      ]
+    },
+    {
+      "description": "Implement the auth service layer",
+      "verification": [
+        "Login returns valid tokens",
+        "Logout invalidates tokens",
+        "Token refresh works correctly",
+        "Unit tests pass"
+      ],
+      "edgeCases": [
+        "Expired token refresh",
+        "Rate limiting on login attempts",
+        "Database connection failure during auth"
+      ]
+    },
+    {
+      "description": "Implement the auth API endpoints",
+      "verification": [
+        "POST /auth/login returns 200 with valid credentials",
+        "POST /auth/login returns 401 with invalid credentials",
+        "POST /auth/logout returns 204",
+        "POST /auth/refresh returns new token",
+        "Integration tests pass"
+      ],
+      "edgeCases": [
+        "Malformed request body",
+        "Missing authorization header",
+        "CORS preflight requests"
+      ]
+    },
+    {
+      "description": "Write end-to-end tests and deploy",
+      "verification": [
+        "E2E test suite passes",
+        "Type checking passes",
+        "Linting passes",
+        "Deployed to staging successfully"
+      ],
+      "edgeCases": [
+        "Network timeout during E2E",
+        "Staging environment differences",
+        "Rollback procedure tested"
+      ]
+    }
+  ]
+}

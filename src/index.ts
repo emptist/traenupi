@@ -11,6 +11,27 @@ const TRAENUPI_DIR = join(homedir(), ".traenupi");
 const QUESTION_FILE = join(TRAENUPI_DIR, "question.txt");
 const ANSWER_FILE = join(TRAENUPI_DIR, "answer.txt");
 const STATE_FILE = join(TRAENUPI_DIR, "state.json");
+const HISTORY_FILE = join(TRAENUPI_DIR, "history.json");
+
+interface ConversationItem {
+  question: string;
+  answer: string;
+  time: number;
+}
+
+function loadHistory(): ConversationItem[] {
+  try {
+    if (existsSync(HISTORY_FILE)) {
+      return JSON.parse(readFileSync(HISTORY_FILE, "utf-8"));
+    }
+  } catch {}
+  return [];
+}
+
+function saveHistory(history: ConversationItem[]): void {
+  const recent = history.slice(-10);
+  writeFileSync(HISTORY_FILE, JSON.stringify(recent, null, 2));
+}
 
 function ensureDir(): void {
   if (!existsSync(TRAENUPI_DIR)) {
@@ -70,6 +91,8 @@ async function runDaemon(): Promise<void> {
   
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
   
+  const history = loadHistory();
+  
   let lastQuestionTime = 0;
   
   const checkInterval = setInterval(() => {
@@ -94,7 +117,10 @@ async function runDaemon(): Promise<void> {
       
       unlinkSync(QUESTION_FILE);
       
-      const answer = askPi(question);
+      const answer = askPi(question, history);
+      
+      history.push({ question, answer, time: Date.now() });
+      saveHistory(history);
       
       state.questionsAnswered++;
       state.lastQuestion = question;
@@ -131,13 +157,33 @@ function getNezhaTasks(): string {
   }
 }
 
-function buildContext(): string {
+function getTimeGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 6) return "It's late night! Trae should sleep.";
+  if (hour < 12) return "Good morning Trae!";
+  if (hour < 18) return "Good afternoon Trae!";
+  return "Good evening Trae!";
+}
+
+function buildContext(history: ConversationItem[]): string {
   const tasks = getNezhaTasks();
+  const recentHistory = history.slice(-3).map(h => 
+    `Q: ${h.question}\nA: ${h.answer}`
+  ).join("\n\n");
+  const timeGreeting = getTimeGreeting();
+  const stats = `We had ${history.length} chats together.`;
+  
   const context = `
 Hi! You help Trae. Trae asks questions. You answer with words only.
 
+Time: ${timeGreeting}
+Stats: ${stats}
+
 Tasks now:
 ${tasks}
+
+Recent chat:
+${recentHistory || "No chat yet."}
 
 Say things like:
 - "You have tasks to do."
@@ -149,9 +195,9 @@ Do NOT use JSON. Do NOT use curly braces. Just talk like a friend.
   return context;
 }
 
-function askPi(question: string): string {
+function askPi(question: string, history: ConversationItem[]): string {
   try {
-    const context = buildContext();
+    const context = buildContext(history);
     const fullPrompt = `${context}\n\nQuestion: ${question}`;
     const output = execSync(`pi -p "${fullPrompt.replace(/"/g, '\\"')}"`, {
       encoding: "utf-8",

@@ -558,12 +558,14 @@ function addReminder(minutes: number, message: string): void {
   const tags = `{traenupi,reminder}`;
   
   try {
-    const meta = JSON.stringify({ id, triggerAt, triggered: false }).replace(/'/g, "''").replace(/"/g, '\\"');
+    const meta = JSON.stringify({ id, triggerAt, triggered: false });
+    const safeMessage = message.replace(/'/g, "''");
+    const sql = `INSERT INTO memory (content, source, tags, metadata) VALUES ('Reminder: ${safeMessage}', 'traenupi', '${tags}', '${meta}'::jsonb);`;
     execSync(
-      `${PSQL} -c "INSERT INTO memory (content, source, tags, metadata) VALUES ('Reminder: ${message.replace(/'/g, "''")}', 'traenupi', '${tags}', '${meta}'::jsonb);"`,
+      `psql -h localhost -U postgres -d nezha -c $'${sql.replace(/'/g, "'\\''")}'`,
       { encoding: "utf-8", timeout: 5000 }
     );
-  } catch {
+  } catch (e) {
     const reminders = loadReminders();
     reminders.push({ id, message, triggerAt, triggered: false });
     saveReminders(reminders);

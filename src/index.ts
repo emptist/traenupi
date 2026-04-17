@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -958,6 +958,54 @@ async function main(): Promise<void> {
   
   if (command === "status") {
     showStatus();
+    return;
+  }
+  
+  if (command === "start") {
+    console.log("╔════════════════════════════════════════════╗");
+    console.log("║     TraeNuPI Session Start                 ║");
+    console.log("╚════════════════════════════════════════════╝\n");
+    
+    console.log("[1/4] Checking daemon status...");
+    try {
+      const stateFile = join(homedir(), ".traenupi", "state.json");
+      if (existsSync(stateFile)) {
+        const state = JSON.parse(readFileSync(stateFile, "utf-8"));
+        const pid = state.pid;
+        if (pid) {
+          try {
+            process.kill(pid, 0);
+            console.log("[DAEMON] Already running (PID: " + pid + ")");
+          } catch {
+            console.log("[DAEMON] Not running. Starting...");
+            spawn("traenupi", ["daemon"], { detached: true, stdio: "ignore" }).unref();
+            console.log("[DAEMON] Started in background");
+          }
+        }
+      } else {
+        console.log("[DAEMON] Not running. Starting...");
+        spawn("traenupi", ["daemon"], { detached: true, stdio: "ignore" }).unref();
+        console.log("[DAEMON] Started in background");
+      }
+    } catch (e) {
+      console.log("[DAEMON] Error checking status: " + (e instanceof Error ? e.message : String(e)));
+    }
+    
+    console.log("\n[2/4] Loading knowledge from Nezha DB...");
+    const knowledge = loadKnowledge();
+    console.log("[KNOWLEDGE] " + knowledge.length + " entries loaded");
+    
+    console.log("\n[3/4] Checking xcom status...");
+    try {
+      const xcomStats = getXcomStats();
+      console.log("[XCOM] " + xcomStats.split("\n")[0]);
+    } catch {
+      console.log("[XCOM] Not configured");
+    }
+    
+    console.log("\n[4/4] Asking baby AI for context...");
+    console.log("──────────────────────────────────────────────────");
+    tellme("I'm a new session. What should I work on?");
     return;
   }
   

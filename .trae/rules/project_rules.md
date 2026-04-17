@@ -31,6 +31,13 @@ TraeNuPI daemon runs independently and can:
 ### Session Continuity
 
 When a new session starts:
+1. **Run `traenupi start`** - This single command does everything:
+   - Checks/starts daemon
+   - Loads knowledge from Nezha DB
+   - Shows xcom status
+   - Asks baby AI for context
+
+Or manually:
 1. Run `traenupi status` to check daemon
 2. Run `traenupi tellme "What should I work on?"` for context
 3. Check `~/.traenupi/history.json` for past conversations

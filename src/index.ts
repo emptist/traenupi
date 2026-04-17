@@ -1050,6 +1050,155 @@ async function main(): Promise<void> {
     return;
   }
   
+  if (command === "meeting" || command === "meet") {
+    const subCommand = args[1];
+    
+    if (!subCommand || subCommand === "list") {
+      console.log("[TRAENUPI] Active Meetings\n");
+      const output = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, topic, status, created_by FROM meetings WHERE status = 'active' ORDER BY created_at DESC LIMIT 10;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      );
+      if (output.trim()) {
+        output.trim().split("\n").forEach(line => {
+          const parts = line.split("|");
+          if (parts.length >= 4) {
+            console.log(`  🟢 ${parts[1]}`);
+            console.log(`     ID: ${parts[0]?.substring(0, 8)}`);
+            console.log(`     By: ${parts[3]}`);
+            console.log();
+          }
+        });
+      } else {
+        console.log("  No active meetings.");
+      }
+      return;
+    }
+    
+    if (subCommand === "show" || subCommand === "view") {
+      const meetingId = args[2];
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting show <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Meeting: ${fullId.substring(0, 8)}\n`);
+      
+      const opinions = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      );
+      
+      if (opinions.trim()) {
+        opinions.trim().split("\n").forEach((line, idx) => {
+          const parts = line.split("|");
+          if (parts.length >= 3) {
+            console.log(`[${idx + 1}] ${parts[2]}`);
+            console.log(`    From: ${parts[0]}`);
+            console.log(`    ${parts[1]}`);
+            console.log();
+          }
+        });
+      } else {
+        console.log("  No opinions yet.");
+      }
+      return;
+    }
+    
+    if (subCommand === "say" || subCommand === "opinion") {
+      const meetingId = args[2];
+      const message = args.slice(3).join(" ");
+      
+      if (!meetingId || !message) {
+        console.log("[ERROR] Usage: traenupi meeting say <meeting_id> <message>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      let agentId = execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT created_by FROM meetings WHERE id = '${fullId}';"`, { encoding: "utf-8", timeout: 5000 }).trim();
+      if (!agentId || !agentId.startsWith("S-TRAE")) {
+        agentId = `S-TRAE-traenupi-${Date.now().toString(36)}`;
+      }
+      const safeMessage = message.replace(/'/g, "''");
+      
+      execSync(
+        `psql -h localhost -U postgres -d nezha -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${fullId}', '${agentId}', '${safeMessage}', 'support');"`,
+        { encoding: "utf-8", timeout: 5000 }
+      );
+      
+      console.log(`[TRAENUPI] Opinion added to meeting ${fullId.substring(0, 8)}`);
+      return;
+    }
+    
+    if (subCommand === "watch") {
+      const meetingId = args[2];
+      
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting watch <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Watching meeting ${fullId.substring(0, 8)}...`);
+      console.log("Press Ctrl+C to stop.\n");
+      
+      let lastCount = 0;
+      while (true) {
+        const count = parseInt(execSync(
+          `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
+          { encoding: "utf-8", timeout: 5000 }
+        ).trim() || "0");
+        
+        if (count > lastCount) {
+          const newOpinions = execSync(
+            `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT ${count - lastCount};"`,
+            { encoding: "utf-8", timeout: 5000 }
+          );
+          
+          newOpinions.trim().split("\n").forEach(line => {
+            const parts = line.split("|");
+            if (parts.length >= 2) {
+              console.log(`\n💬 ${parts[0]}:`);
+              console.log(`   ${parts[1]}\n`);
+            }
+          });
+          
+          lastCount = count;
+        }
+        
+        execSync("sleep 2", { encoding: "utf-8" });
+      }
+    }
+    
+    console.log("[ERROR] Unknown meeting command. Use: list, show, say, watch");
+    return;
+  }
+  
   if (command === "stop") {
     ensureDir();
     if (existsSync(STATE_FILE)) {

@@ -159,6 +159,7 @@ COMMANDS:
   know <category>         List knowledge by category
   init [path]             Initialize .trae folder for a project
   remind <minutes> <msg>  Schedule a reminder (baby AI will answer)
+  reminders               List pending reminders
 
 PROMPT DRIVER MODE:
   -t, --task <desc>       Task description (first line = goal, rest = steps)
@@ -626,6 +627,55 @@ function checkReminders(): void {
   }
 }
 
+function listReminders(): void {
+  try {
+    const output = execSync(
+      `psql -h localhost -U postgres -d nezha -t -A -c "SELECT content, metadata FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = false ORDER BY created_at DESC;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    if (!output.trim()) {
+      console.log("[TRAENUPI] No pending reminders.");
+      return;
+    }
+    
+    console.log("[TRAENUPI] Pending Reminders\n");
+    const now = Date.now();
+    for (const line of output.trim().split("\n")) {
+      const parts = line.split("|");
+      const content = parts[0] || "";
+      const metaStr = parts[1] || "{}";
+      
+      try {
+        const meta = JSON.parse(metaStr);
+        const triggerTime = new Date(meta.triggerAt).toLocaleTimeString();
+        const remaining = Math.max(0, Math.floor((meta.triggerAt - now) / 1000));
+        const status = remaining > 0 ? `in ${remaining}s` : "OVERDUE";
+        console.log(`  🔔 ${content.replace("Reminder: ", "")}`);
+        console.log(`     Scheduled: ${triggerTime} (${status})`);
+        console.log(`     ID: ${meta.id}`);
+      } catch {}
+    }
+  } catch {
+    const reminders = loadReminders().filter(r => !r.triggered);
+    if (reminders.length === 0) {
+      console.log("[TRAENUPI] No pending reminders.");
+      return;
+    }
+    
+    console.log("[TRAENUPI] Pending Reminders (Local)\n");
+    const now = Date.now();
+    for (const r of reminders) {
+      const triggerTime = new Date(r.triggerAt).toLocaleTimeString();
+      const remaining = Math.max(0, Math.floor((r.triggerAt - now) / 1000));
+      const status = remaining > 0 ? `in ${remaining}s` : "OVERDUE";
+      console.log(`  🔔 ${r.message}`);
+      console.log(`     Scheduled: ${triggerTime} (${status})`);
+      console.log(`     ID: ${r.id}`);
+    }
+  }
+}
+
 function initProject(projectPath?: string): void {
   const target = projectPath || process.cwd();
   const traeDir = join(target, ".trae");
@@ -894,6 +944,11 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     addReminder(minutes, message);
+    return;
+  }
+  
+  if (command === "reminders") {
+    listReminders();
     return;
   }
   

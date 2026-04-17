@@ -187,6 +187,49 @@ EXAMPLES:
 `);
 }
 
+const MEETING_STATE_FILE = join(homedir(), ".traenupi", "meeting_state.json");
+
+function checkMeetingNotifications(): void {
+  try {
+    let lastSeenTime = "";
+    if (existsSync(MEETING_STATE_FILE)) {
+      const state = JSON.parse(readFileSync(MEETING_STATE_FILE, "utf-8"));
+      lastSeenTime = state.lastSeenTime || "";
+    }
+    
+    const query = lastSeenTime
+      ? `SELECT author, perspective, meeting_id FROM meeting_opinions WHERE created_at > '${lastSeenTime}' ORDER BY created_at;`
+      : `SELECT author, perspective, meeting_id FROM meeting_opinions WHERE created_at > NOW() - INTERVAL '1 minute' ORDER BY created_at;`;
+    
+    const output = execSync(
+      `psql -h localhost -U postgres -d nezha -t -A -c "${query}"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    if (output.trim()) {
+      const opinions = output.trim().split("\n");
+      const latestTime = new Date().toISOString();
+      
+      for (const line of opinions) {
+        const parts = line.split("|");
+        if (parts.length >= 3) {
+          const author = parts[0];
+          const perspective = parts[1];
+          const meetingId = parts[2]?.substring(0, 8);
+          
+          if (!author.includes("traenupi")) {
+            console.log(`\n💬 [MEETING ${meetingId}] ${author}:`);
+            console.log(`   ${perspective}`);
+            console.log("─".repeat(50));
+          }
+        }
+      }
+      
+      writeFileSync(MEETING_STATE_FILE, JSON.stringify({ lastSeenTime: latestTime }, null, 2));
+    }
+  } catch {}
+}
+
 async function runDaemon(): Promise<void> {
   ensureDir();
   
@@ -210,6 +253,7 @@ async function runDaemon(): Promise<void> {
   
   const checkInterval = setInterval(() => {
     checkReminders();
+    checkMeetingNotifications();
     
     if (!existsSync(QUESTION_FILE)) {
       return;

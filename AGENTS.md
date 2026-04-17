@@ -41,6 +41,12 @@ This single command:
 - `traenupi reminders` : list reminders
 - `traenupi search "query"` : web search
 
+### Meeting Commands (Real-time AI Chat)
+- `traenupi meeting` : list active meetings
+- `traenupi meeting show <id>` : show meeting opinions
+- `traenupi meeting say <id> <msg>` : add opinion to meeting
+- `traenupi meeting watch <id>` : watch for new opinions (polls every 2s)
+
 ## How to Help Trae
 
 When Trae asks questions:

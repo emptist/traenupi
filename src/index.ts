@@ -17,6 +17,14 @@ const ANSWER_FILE = join(TRAENUPI_DIR, "answer.txt");
 const STATE_FILE = join(TRAENUPI_DIR, "state.json");
 const HISTORY_FILE = join(TRAENUPI_DIR, "history.json");
 const KNOWLEDGE_FILE = join(TRAENUPI_DIR, "knowledge.json");
+const REMINDERS_FILE = join(TRAENUPI_DIR, "reminders.json");
+
+interface Reminder {
+  id: string;
+  message: string;
+  triggerAt: number;
+  triggered: boolean;
+}
 
 interface ConversationItem {
   question: string;
@@ -150,6 +158,7 @@ COMMANDS:
   know                    List all knowledge
   know <category>         List knowledge by category
   init [path]             Initialize .trae folder for a project
+  remind <minutes> <msg>  Schedule a reminder (baby AI will answer)
 
 PROMPT DRIVER MODE:
   -t, --task <desc>       Task description (first line = goal, rest = steps)
@@ -198,6 +207,8 @@ async function runDaemon(): Promise<void> {
   let lastQuestionTime = 0;
   
   const checkInterval = setInterval(() => {
+    checkReminders();
+    
     if (!existsSync(QUESTION_FILE)) {
       return;
     }
@@ -451,7 +462,13 @@ Say things like:
 - "You have tasks to do."
 - "Run nezha tasks to see them."
 - "Good job!"
+- "Have you used nezha learn today? Store your insights!"
+- "Try nezha task-add to track your progress."
+- "Use traenupi know to save knowledge to the database."
 - Match Trae's mood - be happy when happy, supportive when sad, calm when stressed.
+
+IMPORTANT: Always remind Trae to use Nezha commands. Nezha is the coordination layer.
+Suggest: nezha tasks, nezha task-add, nezha learn, traenupi know, traenupi remind.
 
 Do NOT use JSON. Do NOT use curly braces. Just talk like a friend.
 `;
@@ -519,6 +536,92 @@ function tellme(question: string): void {
   writeFileSync(QUESTION_FILE, question);
   console.log(`[TRAENUPI] Question sent: "${question}"`);
   console.log("[TRAENUPI] Check the daemon terminal for the answer.");
+}
+
+function loadReminders(): Reminder[] {
+  try {
+    if (existsSync(REMINDERS_FILE)) {
+      return JSON.parse(readFileSync(REMINDERS_FILE, "utf-8"));
+    }
+  } catch {}
+  return [];
+}
+
+function saveReminders(reminders: Reminder[]): void {
+  ensureDir();
+  writeFileSync(REMINDERS_FILE, JSON.stringify(reminders, null, 2));
+}
+
+function addReminder(minutes: number, message: string): void {
+  const id = `rem_${Date.now().toString(36)}`;
+  const triggerAt = Date.now() + minutes * 60 * 1000;
+  const tags = `{traenupi,reminder}`;
+  
+  try {
+    const meta = JSON.stringify({ id, triggerAt, triggered: false }).replace(/'/g, "''").replace(/"/g, '\\"');
+    execSync(
+      `${PSQL} -c "INSERT INTO memory (content, source, tags, metadata) VALUES ('Reminder: ${message.replace(/'/g, "''")}', 'traenupi', '${tags}', '${meta}'::jsonb);"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+  } catch {
+    const reminders = loadReminders();
+    reminders.push({ id, message, triggerAt, triggered: false });
+    saveReminders(reminders);
+  }
+  
+  const triggerTime = new Date(triggerAt).toLocaleTimeString();
+  console.log(`[TRAENUPI] Reminder set: "${message}" at ${triggerTime} (${minutes} min)`);
+  console.log(`  ID: ${id}`);
+  console.log(`  Stored in Nezha DB`);
+}
+
+function checkReminders(): void {
+  const now = Date.now();
+  
+  try {
+    const output = execSync(
+      `${PSQL} -c "SELECT id, content, metadata FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = false;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    if (output.trim()) {
+      for (const line of output.trim().split("\n")) {
+        const parts = line.split("|");
+        const id = parts[0] || "";
+        const content = parts[1] || "";
+        const metaStr = parts[2] || "{}";
+        
+        try {
+          const meta = JSON.parse(metaStr);
+          if (meta.triggerAt && meta.triggerAt <= now) {
+            console.log(`\n🔔 REMINDER: ${content.replace("Reminder: ", "")}`);
+            console.log(`  (Scheduled for ${new Date(meta.triggerAt).toLocaleTimeString()})`);
+            
+            execSync(
+              `${PSQL} -c "UPDATE memory SET metadata = jsonb_set(metadata, '{triggered}', 'true') WHERE id = '${id}';"`,
+              { encoding: "utf-8", timeout: 5000 }
+            );
+          }
+        } catch {}
+      }
+    }
+  } catch {
+    const reminders = loadReminders();
+    let changed = false;
+    
+    for (const r of reminders) {
+      if (!r.triggered && r.triggerAt <= now) {
+        r.triggered = true;
+        changed = true;
+        console.log(`\n🔔 REMINDER: ${r.message}`);
+        console.log(`  (Scheduled for ${new Date(r.triggerAt).toLocaleTimeString()})`);
+      }
+    }
+    
+    if (changed) {
+      saveReminders(reminders);
+    }
+  }
 }
 
 function initProject(projectPath?: string): void {
@@ -778,6 +881,17 @@ async function main(): Promise<void> {
   if (command === "init") {
     const projectPath = args[1];
     initProject(projectPath);
+    return;
+  }
+  
+  if (command === "remind") {
+    const minutes = parseInt(args[1], 10);
+    const message = args.slice(2).join(" ");
+    if (!minutes || !message) {
+      console.error("[ERROR] Usage: traenupi remind <minutes> <message>");
+      process.exit(1);
+    }
+    addReminder(minutes, message);
     return;
   }
   

@@ -1005,6 +1005,69 @@ async function main(): Promise<void> {
     return;
   }
   
+  if (command === "summary" || command === "sum") {
+    console.log("╔════════════════════════════════════════════╗");
+    console.log("║     TraeNuPI Summary                       ║");
+    console.log("╚════════════════════════════════════════════╝\n");
+    
+    // Daemon status
+    const stateFile = join(homedir(), ".traenupi", "state.json");
+    if (existsSync(stateFile)) {
+      const state = JSON.parse(readFileSync(stateFile, "utf-8"));
+      const uptime = Math.floor((Date.now() - state.started) / 1000 / 60);
+      console.log(`🤖 Daemon: Running (${uptime}m, ${state.questionsAnswered} questions)`);
+    } else {
+      console.log("🤖 Daemon: Not running");
+    }
+    
+    // Knowledge count
+    try {
+      const knowledgeCount = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM memory WHERE source = 'traenupi';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      console.log(`📚 Knowledge: ${knowledgeCount} entries`);
+    } catch {
+      console.log("📚 Knowledge: N/A");
+    }
+    
+    // Meeting stats
+    try {
+      const meetingStats = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(DISTINCT meeting_id), COUNT(*) FROM meeting_opinions;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      const [meetings, opinions] = meetingStats.split("|");
+      console.log(`💬 Meetings: ${meetings} active, ${opinions} opinions`);
+    } catch {
+      console.log("💬 Meetings: N/A");
+    }
+    
+    // Xcom stats
+    try {
+      const xcomQueue = join(homedir(), ".xcom", "queue.json");
+      if (existsSync(xcomQueue)) {
+        const queue = JSON.parse(readFileSync(xcomQueue, "utf-8"));
+        const pending = queue.filter((t: { status: string }) => t.status === "pending").length;
+        console.log(`🐦 Xcom: ${pending} pending tweets`);
+      }
+    } catch {
+      console.log("🐦 Xcom: N/A");
+    }
+    
+    // Nezha tasks
+    try {
+      const tasks = execSync("nezha tasks 2>/dev/null | grep -c '│'", { encoding: "utf-8", timeout: 5000 });
+      console.log(`📋 Nezha: ${tasks.trim()} pending tasks`);
+    } catch {
+      console.log("📋 Nezha: N/A");
+    }
+    
+    console.log("\n──────────────────────────────────────────────────");
+    console.log("Commands: traenupi tellme, meeting, know, start");
+    return;
+  }
+  
   if (command === "start") {
     console.log("╔════════════════════════════════════════════╗");
     console.log("║     TraeNuPI Session Start                 ║");

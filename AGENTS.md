@@ -4,6 +4,18 @@
 
 TraeNuPI is a simple reminder assistant that helps Trae AI work continuously without stopping to ask humans.
 
+## Quick Start for New Sessions
+
+```bash
+traenupi start
+```
+
+This single command:
+1. Checks/starts daemon
+2. Loads knowledge from Nezha DB
+3. Shows xcom status
+4. Asks baby AI for context
+
 ## Architecture
 
 - **Daemon**: Runs in a terminal, watches for questions
@@ -19,9 +31,15 @@ TraeNuPI is a simple reminder assistant that helps Trae AI work continuously wit
 - `nezha improve` : create review task
 
 ### TraeNuPI Commands
+- `traenupi start` : initialize session (run this first!)
 - `traenupi daemon` : start the daemon
 - `traenupi tellme "question"` : ask a question
 - `traenupi status` : show daemon status
+- `traenupi know` : show stored knowledge
+- `traenupi know "key" "value"` : store knowledge
+- `traenupi remind <min> "msg"` : schedule reminder
+- `traenupi reminders` : list reminders
+- `traenupi search "query"` : web search
 
 ## How to Help Trae
 

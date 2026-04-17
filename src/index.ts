@@ -1195,7 +1195,60 @@ async function main(): Promise<void> {
       }
     }
     
-    console.log("[ERROR] Unknown meeting command. Use: list, show, say, watch");
+    if (subCommand === "listen") {
+      const meetingId = args[2];
+      
+      if (!meetingId) {
+        console.log("[TRAENUPI] Listening to ALL meeting notifications...\n");
+        console.log("Press Ctrl+C to stop.\n");
+        
+        execSync(
+          `psql -h localhost -U postgres -d nezha -c "LISTEN meeting_opinion;"`,
+          { encoding: "utf-8", timeout: 0, stdio: "inherit" }
+        );
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Listening to meeting ${fullId.substring(0, 8)}...`);
+      console.log("Press Ctrl+C to stop.\n");
+      
+      const { spawn } = await import("child_process");
+      const psql = spawn("psql", ["-h", "localhost", "-U", "postgres", "-d", "nezha"], {
+        stdio: ["pipe", "pipe", "pipe"]
+      });
+      
+      psql.stdin.write("LISTEN meeting_opinion;\n");
+      
+      psql.stdout.on("data", (data: Buffer) => {
+        const output = data.toString();
+        if (output.includes("Asynchronous notification")) {
+          const match = output.match(/"author" : "([^"]+)".*"perspective" : "([^"]+)"/);
+          if (match) {
+            const author = match[1];
+            const perspective = match[2];
+            console.log(`\n💬 ${author}:`);
+            console.log(`   ${perspective}\n`);
+          }
+        }
+      });
+      
+      psql.stderr.on("data", (data: Buffer) => {
+        console.error(`[ERROR] ${data.toString()}`);
+      });
+      
+      await new Promise(() => {});
+    }
+    
+    console.log("[ERROR] Unknown meeting command. Use: list, show, say, watch, listen");
     return;
   }
   

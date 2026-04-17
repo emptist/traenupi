@@ -966,7 +966,13 @@ async function main(): Promise<void> {
     console.log("║     TraeNuPI Session Start                 ║");
     console.log("╚════════════════════════════════════════════╝\n");
     
-    console.log("[1/4] Checking daemon status...");
+    const traeDir = join(process.cwd(), ".trae");
+    if (!existsSync(traeDir)) {
+      console.log("[0/5] Initializing .trae folder for this project...");
+      initProject(process.cwd());
+    }
+    
+    console.log("\n[1/5] Checking daemon status...");
     try {
       const stateFile = join(homedir(), ".traenupi", "state.json");
       if (existsSync(stateFile)) {
@@ -991,11 +997,11 @@ async function main(): Promise<void> {
       console.log("[DAEMON] Error checking status: " + (e instanceof Error ? e.message : String(e)));
     }
     
-    console.log("\n[2/4] Loading knowledge from Nezha DB...");
+    console.log("\n[2/5] Loading knowledge from Nezha DB...");
     const knowledge = loadKnowledge();
     console.log("[KNOWLEDGE] " + knowledge.length + " entries loaded");
     
-    console.log("\n[3/4] Checking xcom status...");
+    console.log("\n[3/5] Checking xcom status...");
     try {
       const xcomStats = getXcomStats();
       console.log("[XCOM] " + xcomStats.split("\n")[0]);
@@ -1003,7 +1009,16 @@ async function main(): Promise<void> {
       console.log("[XCOM] Not configured");
     }
     
-    console.log("\n[4/4] Asking baby AI for context...");
+    console.log("\n[4/5] Checking Nezha tasks...");
+    try {
+      const tasks = execSync("nezha tasks", { encoding: "utf-8", timeout: 5000 });
+      const taskCount = (tasks.match(/│/g) || []).length;
+      console.log("[NEZHA] " + taskCount + " tasks found");
+    } catch {
+      console.log("[NEZHA] Not available");
+    }
+    
+    console.log("\n[5/5] Asking baby AI for context...");
     console.log("──────────────────────────────────────────────────");
     tellme("I'm a new session. What should I work on?");
     return;

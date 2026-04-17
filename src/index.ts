@@ -405,7 +405,7 @@ function getXcomStats(): string {
     const queueFile = join(homedir(), ".xcom", "queue.json");
     if (!existsSync(queueFile)) return "xcom not set up yet.";
     
-    const queue: Array<{status: string; content: string}> = JSON.parse(readFileSync(queueFile, "utf-8"));
+    const queue: Array<{id: string; status: string; content: string; scheduledAt?: number}> = JSON.parse(readFileSync(queueFile, "utf-8"));
     const total = queue.length;
     const posted = queue.filter(t => t.status === "posted").length;
     const pending = queue.filter(t => t.status === "pending").length;
@@ -419,7 +419,15 @@ function getXcomStats(): string {
       }
     }
     
-    return `${total} tweets (${posted} posted, ${pending} pending).${topicInfo}`;
+    let pendingDetails = "";
+    if (pending > 0) {
+      const pendingTweets = queue.filter(t => t.status === "pending").slice(0, 3);
+      pendingDetails = pendingTweets.map(t => 
+        `  - [${t.id}] ${t.content.substring(0, 40)}...`
+      ).join("\n");
+    }
+    
+    return `${total} tweets (${posted} posted, ${pending} pending).${topicInfo}${pending > 0 ? `\nPending:\n${pendingDetails}` : ""}`;
   } catch {
     return "xcom stats unavailable.";
   }
@@ -467,10 +475,14 @@ Say things like:
 - "Have you used nezha learn today? Store your insights!"
 - "Try nezha task-add to track your progress."
 - "Use traenupi know to save knowledge to the database."
+- "You have pending tweets. Run xcom post <id> to publish."
+- "Try xcom inspire for tweet ideas."
+- "Use xcom compose to create a new tweet."
 - Match Trae's mood - be happy when happy, supportive when sad, calm when stressed.
 
 IMPORTANT: Always remind Trae to use Nezha commands. Nezha is the coordination layer.
 Suggest: nezha tasks, nezha task-add, nezha learn, traenupi know, traenupi remind.
+Also suggest xcom commands when there are pending tweets.
 
 Do NOT use JSON. Do NOT use curly braces. Just talk like a friend.
 `;

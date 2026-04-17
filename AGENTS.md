@@ -32,6 +32,7 @@ This single command:
 
 ### TraeNuPI Commands
 - `traenupi start` : initialize session (run this first!)
+- `traenupi summary` : show all stats at once (daemon, knowledge, meetings, xcom)
 - `traenupi daemon` : start the daemon
 - `traenupi tellme "question"` : ask a question
 - `traenupi status` : show daemon status

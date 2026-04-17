@@ -16,10 +16,18 @@ const QUESTION_FILE = join(TRAENUPI_DIR, "question.txt");
 const ANSWER_FILE = join(TRAENUPI_DIR, "answer.txt");
 const STATE_FILE = join(TRAENUPI_DIR, "state.json");
 const HISTORY_FILE = join(TRAENUPI_DIR, "history.json");
+const KNOWLEDGE_FILE = join(TRAENUPI_DIR, "knowledge.json");
 
 interface ConversationItem {
   question: string;
   answer: string;
+  time: number;
+}
+
+interface KnowledgeEntry {
+  key: string;
+  value: string;
+  category: string;
   time: number;
 }
 
@@ -35,6 +43,87 @@ function loadHistory(): ConversationItem[] {
 function saveHistory(history: ConversationItem[]): void {
   const recent = history.slice(-10);
   writeFileSync(HISTORY_FILE, JSON.stringify(recent, null, 2));
+}
+
+const PSQL = "psql -h localhost -U postgres -d nezha -t -A";
+
+function loadKnowledge(): KnowledgeEntry[] {
+  try {
+    const output = execSync(
+      `${PSQL} -c "SELECT content, source, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 50;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    if (!output.trim()) return [];
+    
+    return output.trim().split("\n").map(line => {
+      const parts = line.split("|");
+      const content = parts[0] || "";
+      const category = parts[1] || "general";
+      const tagsStr = parts[2] || "";
+      const keyMatch = content.match(/^(\w[\w-]*):/);
+      return {
+        key: keyMatch ? keyMatch[1] : content.substring(0, 20),
+        value: keyMatch ? content.substring(keyMatch[1].length + 1).trim() : content,
+        category: category || "general",
+        time: Date.now(),
+      };
+    });
+  } catch {
+    return loadKnowledgeLocal();
+  }
+}
+
+function loadKnowledgeLocal(): KnowledgeEntry[] {
+  try {
+    if (existsSync(KNOWLEDGE_FILE)) {
+      return JSON.parse(readFileSync(KNOWLEDGE_FILE, "utf-8"));
+    }
+  } catch {}
+  return [];
+}
+
+function addKnowledge(key: string, value: string, category: string): void {
+  const content = `${key}: ${value}`;
+  const tags = `{traenupi,${category}}`;
+  
+  try {
+    execSync(
+      `${PSQL} -c "INSERT INTO memory (content, source, tags) VALUES ('${content.replace(/'/g, "''")}', 'traenupi', '${tags}');"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+  } catch {
+    const knowledge = loadKnowledgeLocal();
+    const existing = knowledge.findIndex(k => k.key === key && k.category === category);
+    if (existing >= 0) {
+      knowledge[existing].value = value;
+      knowledge[existing].time = Date.now();
+    } else {
+      knowledge.push({ key, value, category, time: Date.now() });
+    }
+    writeFileSync(KNOWLEDGE_FILE, JSON.stringify(knowledge, null, 2));
+  }
+}
+
+function getKnowledgeByCategory(category: string): KnowledgeEntry[] {
+  try {
+    const output = execSync(
+      `${PSQL} -c "SELECT content FROM memory WHERE source = 'traenupi' AND '${category}' = ANY(tags) ORDER BY created_at DESC LIMIT 20;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    if (!output.trim()) return [];
+    
+    return output.trim().split("\n").map(line => {
+      const keyMatch = line.match(/^(\w[\w-]*):/);
+      return {
+        key: keyMatch ? keyMatch[1] : line.substring(0, 20),
+        value: keyMatch ? line.substring(keyMatch[1].length + 1).trim() : line,
+        category,
+        time: Date.now(),
+      };
+    });
+  } catch {
+    return loadKnowledgeLocal().filter(k => k.category === category);
+  }
 }
 
 function ensureDir(): void {
@@ -57,6 +146,10 @@ COMMANDS:
   status                  Show daemon status
   stop                    Stop the daemon
   version                 Show version
+  know <key> <value>      Store knowledge (category: key=value)
+  know                    List all knowledge
+  know <category>         List knowledge by category
+  init [path]             Initialize .trae folder for a project
 
 PROMPT DRIVER MODE:
   -t, --task <desc>       Task description (first line = goal, rest = steps)
@@ -256,6 +349,44 @@ function getProjectName(): string {
   return parts[parts.length - 1] || "unknown";
 }
 
+function formatKnowledge(): string {
+  try {
+    const output = execSync(
+      `${PSQL} -c "SELECT content, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 20;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    if (!output.trim()) return "No knowledge in Nezha DB yet.";
+    
+    const lines: string[] = [];
+    for (const line of output.trim().split("\n")) {
+      const parts = line.split("|");
+      const content = parts[0] || "";
+      const tags = parts[1] || "";
+      const category = tags.replace(/[{}"]/g, "").split(",").filter((t: string) => t !== "traenupi").join(",") || "general";
+      lines.push(`[${category}] ${content}`);
+    }
+    return lines.join("\n");
+  } catch {
+    const knowledge = loadKnowledgeLocal();
+    if (knowledge.length === 0) return "No knowledge stored yet.";
+    
+    const byCategory: Record<string, KnowledgeEntry[]> = {};
+    for (const k of knowledge) {
+      if (!byCategory[k.category]) byCategory[k.category] = [];
+      byCategory[k.category].push(k);
+    }
+    
+    const lines: string[] = [];
+    for (const [cat, entries] of Object.entries(byCategory)) {
+      lines.push(`[${cat}]`);
+      for (const e of entries) {
+        lines.push(`  ${e.key}: ${e.value}`);
+      }
+    }
+    return lines.join("\n");
+  }
+}
+
 function getXcomStats(): string {
   try {
     const queueFile = join(homedir(), ".xcom", "queue.json");
@@ -306,6 +437,9 @@ Time: ${timeGreeting}
 Stats: ${stats}${moodInfo}
 Working on: ${project} (${cwd})
 Xcom: ${xcom}
+
+Knowledge:
+${formatKnowledge()}
 
 Tasks now:
 ${tasks}
@@ -505,6 +639,72 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     webSearch(query);
+    return;
+  }
+  
+  if (command === "know" || command === "knowledge") {
+    const rest = args.slice(1);
+    
+    if (rest.length === 0) {
+      try {
+        const output = execSync(
+          `${PSQL} -c "SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 30;"`,
+          { encoding: "utf-8", timeout: 5000 }
+        );
+        if (output.trim()) {
+          console.log("[TRAENUPI] Knowledge Store (Nezha DB)\n");
+          for (const line of output.trim().split("\n")) {
+            const parts = line.split("|");
+            const content = parts[0] || "";
+            const tags = parts[1] || "";
+            const date = parts[2] ? new Date(parts[2]).toLocaleDateString() : "";
+            const category = tags.replace(/[{}"]/g, "").split(",").filter((t: string) => t !== "traenupi").join(",") || "general";
+            console.log(`  [${category}] ${content} (${date})`);
+          }
+          return;
+        }
+      } catch {}
+      
+      const knowledge = loadKnowledgeLocal();
+      if (knowledge.length === 0) {
+        console.log("[TRAENUPI] No knowledge stored yet.");
+        console.log("Usage: traenupi know <category>:<key> <value>");
+        return;
+      }
+      console.log("[TRAENUPI] Knowledge Store (Local)\n");
+      const byCategory: Record<string, KnowledgeEntry[]> = {};
+      for (const k of knowledge) {
+        if (!byCategory[k.category]) byCategory[k.category] = [];
+        byCategory[k.category].push(k);
+      }
+      for (const [cat, entries] of Object.entries(byCategory)) {
+        console.log(`[${cat}]`);
+        for (const e of entries) {
+          console.log(`  ${e.key}: ${e.value} (${new Date(e.time).toLocaleDateString()})`);
+        }
+      }
+      return;
+    }
+    
+    const firstArg = rest[0];
+    if (rest.length >= 2 && firstArg.includes(":")) {
+      const [category, key] = firstArg.split(":", 2);
+      const value = rest.slice(1).join(" ");
+      addKnowledge(key, value, category);
+      console.log(`[TRAENUPI] Stored in Nezha DB: [${category}] ${key} = ${value}`);
+      return;
+    }
+    
+    const categoryEntries = getKnowledgeByCategory(firstArg);
+    if (categoryEntries.length > 0) {
+      console.log(`[TRAENUPI] Knowledge: [${firstArg}]\n`);
+      for (const e of categoryEntries) {
+        console.log(`  ${e.key}: ${e.value}`);
+      }
+    } else {
+      console.log(`[TRAENUPI] No knowledge found for "${firstArg}".`);
+      console.log("Usage: traenupi know <category>:<key> <value>");
+    }
     return;
   }
   

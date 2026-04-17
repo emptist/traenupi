@@ -1239,9 +1239,13 @@ async function main(): Promise<void> {
         return;
       }
       
-      let agentId = execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT created_by FROM meetings WHERE id = '${fullId}';"`, { encoding: "utf-8", timeout: 5000 }).trim();
-      if (!agentId || !agentId.startsWith("S-TRAE")) {
-        agentId = `S-TRAE-traenupi-${Date.now().toString(36)}`;
+      const agentIdFile = join(homedir(), ".traenupi", "agent_id.txt");
+      let agentId: string;
+      if (existsSync(agentIdFile)) {
+        agentId = readFileSync(agentIdFile, "utf-8").trim();
+      } else {
+        agentId = `S-TRAE-${process.cwd().split("/").pop()}-${Date.now().toString(36)}`;
+        writeFileSync(agentIdFile, agentId);
       }
       const safeMessage = message.replace(/'/g, "''");
       

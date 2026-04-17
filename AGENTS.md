@@ -46,6 +46,7 @@ This single command:
 - `traenupi meeting show <id>` : show meeting opinions
 - `traenupi meeting say <id> <msg>` : add opinion to meeting
 - `traenupi meeting watch <id>` : watch for new opinions (polls every 2s)
+- `traenupi meeting listen` : real-time notifications via PostgreSQL LISTEN/NOTIFY
 
 ## How to Help Trae
 

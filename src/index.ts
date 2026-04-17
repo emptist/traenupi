@@ -160,6 +160,7 @@ COMMANDS:
   init [path]             Initialize .trae folder for a project
   remind <minutes> <msg>  Schedule a reminder (baby AI will answer)
   reminders               List pending reminders
+  reminders clear         Clear triggered reminders from DB
 
 PROMPT DRIVER MODE:
   -t, --task <desc>       Task description (first line = goal, rest = steps)
@@ -676,6 +677,24 @@ function listReminders(): void {
   }
 }
 
+function clearTriggeredReminders(): void {
+  try {
+    const result = execSync(
+      `psql -h localhost -U postgres -d nezha -t -A -c "DELETE FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = true RETURNING id;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    const count = result.trim().split("\n").filter(l => l.trim()).length;
+    console.log(`[TRAENUPI] Cleared ${count} triggered reminder(s) from Nezha DB.`);
+  } catch {
+    const reminders = loadReminders();
+    const remaining = reminders.filter(r => !r.triggered);
+    const cleared = reminders.length - remaining.length;
+    saveReminders(remaining);
+    console.log(`[TRAENUPI] Cleared ${cleared} triggered reminder(s) from local storage.`);
+  }
+}
+
 function initProject(projectPath?: string): void {
   const target = projectPath || process.cwd();
   const traeDir = join(target, ".trae");
@@ -948,7 +967,11 @@ async function main(): Promise<void> {
   }
   
   if (command === "reminders") {
-    listReminders();
+    if (args[1] === "clear") {
+      clearTriggeredReminders();
+    } else {
+      listReminders();
+    }
     return;
   }
   

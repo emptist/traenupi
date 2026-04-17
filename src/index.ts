@@ -1359,7 +1359,57 @@ async function main(): Promise<void> {
       await new Promise(() => {});
     }
     
-    console.log("[ERROR] Unknown meeting command. Use: list, show, say, watch, listen");
+    if (subCommand === "consensus" || subCommand === "agree") {
+      const meetingId = args[2];
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting consensus <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Analyzing consensus for meeting ${fullId.substring(0, 8)}...\n`);
+      
+      const opinions = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, position, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      );
+      
+      const lines = opinions.trim().split("\n").filter((l: string) => l);
+      const supports = lines.filter((l: string) => l.split("|")[1] === "support").length;
+      const opposes = lines.filter((l: string) => l.split("|")[1] === "oppose").length;
+      const neutrals = lines.filter((l: string) => l.split("|")[1] === "neutral").length;
+      const total = lines.length;
+      
+      console.log(`📊 Opinion Distribution:`);
+      console.log(`   ✅ Support: ${supports} (${Math.round(supports/total*100)}%)`);
+      console.log(`   ❌ Oppose: ${opposes} (${Math.round(opposes/total*100)}%)`);
+      console.log(`   ⚪ Neutral: ${neutrals} (${Math.round(neutrals/total*100)}%)`);
+      
+      if (supports > total * 0.6) {
+        console.log(`\n🎯 CONSENSUS: Strong agreement (${Math.round(supports/total*100)}% support)`);
+      } else if (supports > total * 0.4) {
+        console.log(`\n🤔 CONSENSUS: Partial agreement (${Math.round(supports/total*100)}% support)`);
+      } else if (opposes > total * 0.4) {
+        console.log(`\n⚠️ CONSENSUS: Disagreement (${Math.round(opposes/total*100)}% oppose)`);
+      } else {
+        console.log(`\n❓ CONSENSUS: No clear consensus`);
+      }
+      
+      const uniqueAuthors = new Set(lines.map((l: string) => l.split("|")[0]));
+      console.log(`\n👥 Participants: ${uniqueAuthors.size} AI(s)`);
+      console.log(`📝 Total opinions: ${total}`);
+      return;
+    }
+    
+    console.log("[ERROR] Unknown meeting command. Use: list, show, say, watch, listen, consensus");
     return;
   }
   

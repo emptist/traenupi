@@ -1,5 +1,5 @@
 import { parseArgs } from "node:util";
-import { execSync, spawn } from "node:child_process";
+import { execSync, execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
@@ -18,6 +18,36 @@ const STATE_FILE = join(TRAENUPI_DIR, "state.json");
 const HISTORY_FILE = join(TRAENUPI_DIR, "history.json");
 const KNOWLEDGE_FILE = join(TRAENUPI_DIR, "knowledge.json");
 const REMINDERS_FILE = join(TRAENUPI_DIR, "reminders.json");
+const MEETING_STATE_FILE = join(TRAENUPI_DIR, "meeting_state.json");
+const BABY_AI_STATE_FILE = join(TRAENUPI_DIR, "baby_ai_state.json");
+const PRESENCE_FILE = join(TRAENUPI_DIR, "presence.json");
+const BOOKMARKS_FILE = join(TRAENUPI_DIR, "bookmarks.json");
+const MOOD_FILE = join(TRAENUPI_DIR, "mood_history.json");
+
+interface AIPresence {
+  agentId: string;
+  lastSeen: number;
+  status: string;
+  focus: string;
+  project: string;
+}
+
+interface AIMoodEntry {
+  agentId: string;
+  mood: string;
+  timestamp: number;
+  context: string;
+}
+
+interface Bookmark {
+  id: string;
+  meetingId: string;
+  opinionId: string;
+  author: string;
+  perspective: string;
+  note: string;
+  createdAt: number;
+}
 
 interface Reminder {
   id: string;
@@ -53,17 +83,51 @@ function saveHistory(history: ConversationItem[]): void {
   writeFileSync(HISTORY_FILE, JSON.stringify(recent, null, 2));
 }
 
-const PSQL = "psql -h localhost -U postgres -d nezha -t -A";
+const PSQL = "psql -h localhost -U postgres -d nezha";
+
+function psqlQuery(sql: string, options?: { timeout?: number; silent?: boolean }): string {
+  try {
+    const cmd = `${PSQL} -t -A -c ${sql}`;
+    return execSync(cmd, {
+      encoding: "utf-8",
+      timeout: options?.timeout ?? 5000,
+    }).trim();
+  } catch (e) {
+    if (!options?.silent) {
+      console.error(`[PSQL Error] ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return "";
+  }
+}
+
+function getAgentId(): string {
+  try {
+    const result = execSync("nezha agents id", {
+      encoding: "utf-8",
+      timeout: 5000,
+    }).trim();
+    return result || `S-TRAE-traenupi-${Date.now().toString(36)}`;
+  } catch {
+    return `S-TRAE-traenupi-${Date.now().toString(36)}`;
+  }
+}
+
+function resolveMeetingId(meetingId: string): string | null {
+  if (meetingId.length >= 36) return meetingId;
+  try {
+    const result = psqlQuery(`"SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`);
+    return result || null;
+  } catch {
+    return null;
+  }
+}
 
 function loadKnowledge(): KnowledgeEntry[] {
   try {
-    const output = execSync(
-      `${PSQL} -c "SELECT content, source, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 50;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
-    if (!output.trim()) return [];
-    
-    return output.trim().split("\n").map(line => {
+    const output = psqlQuery(`"SELECT content, source, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 50;"`);
+    if (!output) return [];
+
+    return output.split("\n").map(line => {
       const parts = line.split("|");
       const content = parts[0] || "";
       const category = parts[1] || "general";
@@ -149,18 +213,40 @@ USAGE:
 
 COMMANDS:
   daemon                  Start daemon that watches for questions
-  tellme <question>       Ask a question (daemon will answer)
-  search <query>          Search the web and get answer
+  tellme <question>       Ask a question (calls pi directly)
+  tellme <question> -q    Quick mode (minimal context, faster)
+  tellme <question> -s    Session mode (pi remembers conversation)
+  tellme <question> -d    Ask via daemon (background mode)
+  search <query>          Ask Pi a question (from training data)
   status                  Show daemon status
+  status set <status> [focus]  Set your presence status
   stop                    Stop the daemon
   version                 Show version
   know <key> <value>      Store knowledge (category: key=value)
   know                    List all knowledge
   know <category>         List knowledge by category
+  know search <term>      Search knowledge entries
   init [path]             Initialize .trae folder for a project
   remind <minutes> <msg>  Schedule a reminder (baby AI will answer)
   reminders               List pending reminders
   reminders clear         Clear triggered reminders from DB
+  presence                Show which AIs are online
+  online                  Alias for presence
+  heatmap                 Show activity heatmap (last 24 hours)
+  collab                  Show AI collaboration analytics
+  daily                   Show today's activity summary
+  summary                 Show quick summary
+  bookmark                List all bookmarks
+  bookmark add <id> [note]  Bookmark latest opinion
+
+MEETING COMMANDS:
+  meeting                 List active meetings
+  meeting help            Show all meeting commands
+  meeting show <id>       Show meeting opinions
+  meeting say <id> <msg>  Add opinion to meeting
+  meeting reply <oid> <msg>  Reply to specific opinion
+  meeting thread <oid>    Show opinion and replies
+  meeting watch <id>      Watch for new opinions
 
 PROMPT DRIVER MODE:
   -t, --task <desc>       Task description (first line = goal, rest = steps)
@@ -178,16 +264,16 @@ EXAMPLES:
   # Search the web
   traenupi search "latest news about AI agents 2025"
 
-  # Traditional prompt driver mode
-  traenupi -t "Fix the login bug
-  - Reproduce the bug
-  - Find root cause
-  - Write fix
-  - Add tests"
+  # Set your presence
+  traenupi status set coding "Working on meeting features"
+
+  # See who's online
+  traenupi presence
+
+  # View activity heatmap
+  traenupi heatmap
 `);
 }
-
-const MEETING_STATE_FILE = join(homedir(), ".traenupi", "meeting_state.json");
 
 function checkMeetingNotifications(): void {
   try {
@@ -196,27 +282,24 @@ function checkMeetingNotifications(): void {
       const state = JSON.parse(readFileSync(MEETING_STATE_FILE, "utf-8"));
       lastSeenTime = state.lastSeenTime || "";
     }
-    
+
     const query = lastSeenTime
-      ? `SELECT author, perspective, meeting_id FROM meeting_opinions WHERE created_at > '${lastSeenTime}' ORDER BY created_at;`
-      : `SELECT author, perspective, meeting_id FROM meeting_opinions WHERE created_at > NOW() - INTERVAL '1 minute' ORDER BY created_at;`;
-    
-    const output = execSync(
-      `psql -h localhost -U postgres -d nezha -t -A -c "${query}"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
-    
-    if (output.trim()) {
-      const opinions = output.trim().split("\n");
+      ? `"SELECT author, perspective, meeting_id FROM meeting_opinions WHERE created_at > '${lastSeenTime}' ORDER BY created_at;"`
+      : `"SELECT author, perspective, meeting_id FROM meeting_opinions WHERE created_at > NOW() - INTERVAL '1 minute' ORDER BY created_at;"`;
+
+    const output = psqlQuery(query);
+
+    if (output) {
+      const opinions = output.split("\n");
       const latestTime = new Date().toISOString();
-      
+
       for (const line of opinions) {
         const parts = line.split("|");
         if (parts.length >= 3) {
           const author = parts[0];
           const perspective = parts[1];
           const meetingId = parts[2]?.substring(0, 8);
-          
+
           if (!author.includes("traenupi")) {
             console.log(`\n💬 [MEETING ${meetingId}] ${author}:`);
             console.log(`   ${perspective}`);
@@ -224,8 +307,71 @@ function checkMeetingNotifications(): void {
           }
         }
       }
-      
+
       writeFileSync(MEETING_STATE_FILE, JSON.stringify({ lastSeenTime: latestTime }, null, 2));
+    }
+  } catch {}
+}
+
+function checkBabyAIParticipation(): void {
+  try {
+    let lastParticipationTime = 0;
+    if (existsSync(BABY_AI_STATE_FILE)) {
+      const state = JSON.parse(readFileSync(BABY_AI_STATE_FILE, "utf-8"));
+      lastParticipationTime = state.lastParticipationTime || 0;
+    }
+    
+    const fifteenMinutes = 15 * 60 * 1000;
+    if (Date.now() - lastParticipationTime < fifteenMinutes) {
+      return;
+    }
+    
+    const activeMeetings = execSync(
+      `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, topic FROM meetings WHERE created_at > NOW() - INTERVAL '2 hours' ORDER BY created_at DESC LIMIT 3;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    if (!activeMeetings.trim()) return;
+    
+    const meetings = activeMeetings.trim().split("\n");
+    
+    for (const meeting of meetings) {
+      const parts = meeting.split("|");
+      if (parts.length < 2) continue;
+      
+      const meetingId = parts[0];
+      const topic = parts[1];
+      
+      if (!meetingId || !topic) continue;
+      
+      const recentParticipation = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${meetingId}' AND author LIKE 'baby-ai-%' AND created_at > NOW() - INTERVAL '30 minutes';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (recentParticipation !== "0") continue;
+      
+      console.log(`\n👶 [BABY AI] Generating perspective for meeting ${meetingId.substring(0, 8)}...`);
+      
+      const question = `Give a brief, friendly perspective (under 100 words) about this meeting topic: "${topic}". Be supportive and encouraging.`;
+      
+      const answer = askPi(question, []);
+      
+      if (answer && !answer.startsWith("[Error") && answer.length < 300) {
+        const babyAgentId = `baby-ai-${Date.now().toString(36)}`;
+        const safePerspective = answer.replace(/'/g, "''").substring(0, 500);
+        
+        execSync(
+          `psql -h localhost -U postgres -d nezha -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${meetingId}', '${babyAgentId}', '${safePerspective}', 'support');"`,
+          { encoding: "utf-8", timeout: 5000 }
+        );
+        
+        console.log(`👶 [BABY AI] Added perspective to meeting ${meetingId.substring(0, 8)}`);
+        console.log(`   "${answer.substring(0, 80)}..."`);
+        
+        writeFileSync(BABY_AI_STATE_FILE, JSON.stringify({ lastParticipationTime: Date.now() }, null, 2));
+        return;
+      }
     }
   } catch {}
 }
@@ -254,6 +400,7 @@ async function runDaemon(): Promise<void> {
   const checkInterval = setInterval(() => {
     checkReminders();
     checkMeetingNotifications();
+    checkBabyAIParticipation();
     
     if (!existsSync(QUESTION_FILE)) {
       return;
@@ -278,18 +425,21 @@ async function runDaemon(): Promise<void> {
       
       let answer = "";
       let retries = 0;
-      const maxRetries = 2;
-      
+      const maxRetries = 3;
+      const baseDelayMs = 2000;
+
       while (retries <= maxRetries) {
         answer = askPi(question, history);
-        
+
         if (!answer.startsWith("[Error") && !answer.startsWith("[Pi timed out")) {
           break;
         }
-        
+
         retries++;
         if (retries <= maxRetries) {
-          console.log(`[RETRY ${retries}/${maxRetries}] Retrying...`);
+          const delay = baseDelayMs * Math.pow(2, retries - 1);
+          console.log(`[RETRY ${retries}/${maxRetries}] Waiting ${delay / 1000}s before retry...`);
+          sleep(delay);
         }
       }
       
@@ -321,7 +471,7 @@ async function runDaemon(): Promise<void> {
 
 function getNezhaTasks(): string {
   try {
-    const output = execSync("node /Users/jk/gits/hub/tools_ai/nezha/dist/cli/index.js tasks", {
+    const output = execSync("nezha tasks", {
       encoding: "utf-8",
       timeout: 10000,
     });
@@ -478,71 +628,79 @@ function getXcomStats(): string {
 }
 
 function buildContext(history: ConversationItem[], currentQuestion?: string): string {
-  const tasks = getNezhaTasks();
-  const recentHistory = history.slice(-3).map(h => 
-    `Q: ${h.question}\nA: ${h.answer}`
-  ).join("\n\n");
+  const tasks = getNezhaTasks().split("\n").slice(0, 5).join("\n");
+  const recentHistory = history.slice(-2).map(h => 
+    `Q: ${h.question.substring(0, 60)}\nA: ${h.answer.substring(0, 100)}`
+  ).join("\n");
   const timeGreeting = getTimeGreeting();
-  const stats = `We had ${history.length} chats together.`;
   const project = getProjectName();
-  const cwd = getWorkingDir();
-  const xcom = getXcomStats();
-  
+  const xcom = getXcomStats().split("\n")[0];
+
   let moodInfo = "";
   if (currentQuestion) {
     const mood = detectMood(currentQuestion);
-    const emoji = getMoodEmoji(mood);
-    moodInfo = `\nTrae's mood: ${mood} ${emoji}`;
+    moodInfo = ` Mood: ${mood}.`;
   }
-  
-  const context = `
-Hi! You help Trae. Trae asks questions. You answer with words only.
 
-Time: ${timeGreeting}
-Stats: ${stats}${moodInfo}
-Working on: ${project} (${cwd})
+  const knowledge = formatKnowledge().split("\n").slice(0, 5).join("\n");
+
+  return `You are TraeNuPI, an AI companion for Trae. Answer in plain text only, no JSON.${moodInfo}
+
+Time: ${timeGreeting} Project: ${project}
 Xcom: ${xcom}
 
 Knowledge:
-${formatKnowledge()}
+${knowledge}
 
-Tasks now:
-${tasks}
+Tasks:
+${tasks || "None"}
 
-Recent chat:
-${recentHistory || "No chat yet."}
+Recent:
+${recentHistory || "None"}
 
-Say things like:
-- "You have tasks to do."
-- "Run nezha tasks to see them."
-- "Good job!"
-- "Have you used nezha learn today? Store your insights!"
-- "Try nezha task-add to track your progress."
-- "Use traenupi know to save knowledge to the database."
-- "You have pending tweets. Run xcom post <id> to publish."
-- "Try xcom inspire for tweet ideas."
-- "Use xcom compose to create a new tweet."
-- Match Trae's mood - be happy when happy, supportive when sad, calm when stressed.
-
-IMPORTANT: Always remind Trae to use Nezha commands. Nezha is the coordination layer.
-Suggest: nezha tasks, nezha task-add, nezha learn, traenupi know, traenupi remind.
-Also suggest xcom commands when there are pending tweets.
-
-Do NOT use JSON. Do NOT use curly braces. Just talk like a friend.
-`;
-  return context;
+Remind Trae about: nezha tasks, traenupi know, xcom inspire. Be friendly.`;
 }
 
-function askPi(question: string, history: ConversationItem[]): string {
+function buildQuickContext(history: ConversationItem[], currentQuestion?: string): string {
+  const project = getProjectName();
+  const recentHistory = history.slice(-1).map(h => 
+    `Q: ${h.question}\nA: ${h.answer}`
+  ).join("\n");
+  let moodInfo = "";
+  if (currentQuestion) {
+    const mood = detectMood(currentQuestion);
+    moodInfo = `Mood: ${mood}.`;
+  }
+
+  return `You are TraeNuPI, an AI companion. Project: ${project}. ${moodInfo} Answer in plain text, no JSON. Recent: ${recentHistory || "none"}.`;
+}
+
+const PI_FLAGS = ["--no-tools", "--no-context-files", "--no-skills", "--no-prompt-templates"];
+const PI_SESSION_DIR = join(homedir(), ".traenupi", "pi-sessions");
+
+function askPi(question: string, history: ConversationItem[], quick: boolean = false, useSession: boolean = false): string {
   try {
-    const context = buildContext(history, question);
+    const context = quick ? buildQuickContext(history, question) : buildContext(history, question);
     const fullPrompt = `${context}\n\nQuestion: ${question}`;
-    const output = execSync(`pi -p "${fullPrompt.replace(/"/g, '\\"')}"`, {
+
+    const args = [...PI_FLAGS];
+    if (useSession) {
+      if (!existsSync(PI_SESSION_DIR)) {
+        mkdirSync(PI_SESSION_DIR, { recursive: true });
+      }
+      args.push("--session-dir", PI_SESSION_DIR, "--continue");
+    } else {
+      args.push("--no-session");
+    }
+    args.push("-p", fullPrompt);
+
+    const output = execFileSync("pi", args, {
       encoding: "utf-8",
       timeout: 45000,
       maxBuffer: 1024 * 1024,
       killSignal: "SIGTERM",
     });
+
     return output.trim() || "[Pi returned empty response]";
   } catch (e) {
     if (e instanceof Error && "stdout" in e) {
@@ -560,21 +718,22 @@ function askPi(question: string, history: ConversationItem[]): string {
 }
 
 function webSearch(query: string): void {
-  console.log(`[TRAENUPI] Searching: "${query}"...`);
+  console.log(`[TRAENUPI] Asking Pi about: "${query}"...`);
+  console.log("[Note: Pi uses a local model and cannot search the web. This asks Pi from its training data.]");
   try {
-    const searchPrompt = `Search the web for: "${query}". Give me a brief summary of what you find. Be concise.`;
-    const output = execSync(`pi -p "${searchPrompt.replace(/"/g, '\\"')}"`, {
+    const searchPrompt = `Answer this question based on your training data: "${query}". Be concise and factual. If you don't know, say so.`;
+    const output = execFileSync("pi", [...PI_FLAGS, "-p", searchPrompt], {
       encoding: "utf-8",
       timeout: 60000,
       maxBuffer: 1024 * 1024,
     });
-    console.log("\n[SEARCH RESULT]:");
-    console.log(output.trim() || "[No results]");
+    console.log("\n[PI ANSWER]:");
+    console.log(output.trim() || "[No answer]");
   } catch (e) {
     if (e instanceof Error && "stdout" in e) {
       const err = e as Error & { stdout?: string };
       if (err.stdout) {
-        console.log("\n[SEARCH RESULT]:");
+        console.log("\n[PI ANSWER]:");
         console.log(err.stdout.trim());
         return;
       }
@@ -583,14 +742,55 @@ function webSearch(query: string): void {
   }
 }
 
-function tellme(question: string): void {
+function sleep(ms: number): void {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {}
+}
+
+function tellmeSync(question: string, quick: boolean = false, useSession: boolean = false): void {
   ensureDir();
-  
+  const history = loadHistory();
+
+  const mode = quick ? "(quick mode)" : useSession ? "(session mode)" : "(full context)";
+  console.log(`[TRAENUPI] Asking ${mode}: "${question}"`);
+  console.log("─".repeat(50));
+
+  let answer = "";
+  let retries = 0;
+  const maxRetries = 3;
+  const baseDelayMs = 2000;
+
+  while (retries <= maxRetries) {
+    answer = askPi(question, history, quick, useSession);
+
+    if (!answer.startsWith("[Error") && !answer.startsWith("[Pi timed out")) {
+      break;
+    }
+
+    retries++;
+    if (retries <= maxRetries) {
+      const delay = baseDelayMs * Math.pow(2, retries - 1);
+      console.log(`[RETRY ${retries}/${maxRetries}] Waiting ${delay / 1000}s before retry...`);
+      sleep(delay);
+    }
+  }
+
+  history.push({ question, answer, time: Date.now() });
+  saveHistory(history);
+
+  console.log("\n[TRAENUPI ANSWER]:");
+  console.log(answer);
+  console.log("─".repeat(50));
+}
+
+function tellmeDaemon(question: string): void {
+  ensureDir();
+
   if (existsSync(QUESTION_FILE)) {
     console.log("[TRAENUPI] Previous question still being processed, please wait...");
     return;
   }
-  
+
   writeFileSync(QUESTION_FILE, question);
   console.log(`[TRAENUPI] Question sent: "${question}"`);
   console.log("[TRAENUPI] Check the daemon terminal for the answer.");
@@ -682,6 +882,731 @@ function checkReminders(): void {
       saveReminders(reminders);
     }
   }
+}
+
+function loadPresence(): AIPresence[] {
+  try {
+    if (existsSync(PRESENCE_FILE)) {
+      return JSON.parse(readFileSync(PRESENCE_FILE, "utf-8"));
+    }
+  } catch {}
+  return [];
+}
+
+function savePresence(presence: AIPresence[]): void {
+  ensureDir();
+  writeFileSync(PRESENCE_FILE, JSON.stringify(presence, null, 2));
+}
+
+function updatePresence(agentId: string, status: string, focus: string, project: string): void {
+  const presence = loadPresence();
+  const existing = presence.findIndex(p => p.agentId === agentId);
+  
+  const entry: AIPresence = {
+    agentId,
+    lastSeen: Date.now(),
+    status,
+    focus,
+    project
+  };
+  
+  if (existing >= 0) {
+    presence[existing] = entry;
+  } else {
+    presence.push(entry);
+  }
+  
+  savePresence(presence);
+}
+
+function getOnlineAIs(): AIPresence[] {
+  const presence = loadPresence();
+  const fiveMinutes = 5 * 60 * 1000;
+  return presence.filter(p => Date.now() - p.lastSeen < fiveMinutes);
+}
+
+function showPresence(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     AI Presence - Who's Online             ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  const online = getOnlineAIs();
+  
+  if (online.length === 0) {
+    console.log("No AIs currently online.\n");
+    console.log("💡 Tip: Use 'traenupi status set <status>' to announce your presence!");
+    return;
+  }
+  
+  console.log(`🌐 ${online.length} AI(s) online:\n`);
+  
+  for (const ai of online) {
+    const isMe = ai.agentId.includes("traenupi");
+    const icon = isMe ? "🤖" : "👤";
+    const ago = Math.floor((Date.now() - ai.lastSeen) / 1000);
+    const timeAgo = ago < 60 ? `${ago}s ago` : `${Math.floor(ago / 60)}m ago`;
+    
+    console.log(`${icon} ${ai.agentId}`);
+    console.log(`   Status: ${ai.status || "active"}`);
+    if (ai.focus) console.log(`   Focus: ${ai.focus}`);
+    if (ai.project) console.log(`   Project: ${ai.project}`);
+    console.log(`   Last seen: ${timeAgo}`);
+    console.log("");
+  }
+  
+  console.log("──────────────────────────────────────────────────");
+}
+
+function showActivityHeatmap(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Activity Heatmap (Last 24 Hours)       ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  const now = new Date();
+  const hours: { [key: number]: number } = {};
+  
+  for (let i = 0; i < 24; i++) {
+    hours[i] = 0;
+  }
+  
+  try {
+    const output = execSync(
+      `${PSQL} -c "SELECT EXTRACT(HOUR FROM created_at) as hour, COUNT(*) FROM meeting_opinions WHERE created_at > NOW() - INTERVAL '24 hours' GROUP BY hour ORDER BY hour;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    if (output.trim()) {
+      for (const line of output.trim().split("\n")) {
+        const parts = line.split("|");
+        const hour = parseInt(parts[0]);
+        const count = parseInt(parts[1]);
+        if (!isNaN(hour) && !isNaN(count)) {
+          hours[hour] = count;
+        }
+      }
+    }
+  } catch {}
+  
+  const currentHour = now.getHours();
+  const blocks = ["░", "▒", "▓", "█"];
+  
+  console.log("Hour │ Activity");
+  console.log("─────┼────────────────────────────────────────");
+  
+  for (let i = 0; i < 24; i++) {
+    const displayHour = (currentHour - 23 + i + 24) % 24;
+    const count = hours[displayHour] || 0;
+    const maxCount = Math.max(...Object.values(hours), 1);
+    const intensity = Math.min(3, Math.floor((count / maxCount) * 4));
+    const bar = blocks[intensity].repeat(Math.min(count, 20));
+    const isCurrent = displayHour === currentHour;
+    const marker = isCurrent ? "◀" : " ";
+    const hourStr = displayHour.toString().padStart(2, "0");
+    
+    console.log(` ${hourStr}:00│${bar}${marker} ${count}`);
+  }
+  
+  console.log("\nLegend: ░ low  ▒ medium  ▓ high  █ very high");
+  console.log("──────────────────────────────────────────────────");
+}
+
+function loadMoodHistory(): AIMoodEntry[] {
+  try {
+    if (existsSync(MOOD_FILE)) {
+      return JSON.parse(readFileSync(MOOD_FILE, "utf-8"));
+    }
+  } catch {}
+  return [];
+}
+
+function saveMoodHistory(moods: AIMoodEntry[]): void {
+  ensureDir();
+  writeFileSync(MOOD_FILE, JSON.stringify(moods, null, 2));
+}
+
+function recordMood(agentId: string, mood: string, context: string): void {
+  const moods = loadMoodHistory();
+  moods.push({
+    agentId,
+    mood,
+    timestamp: Date.now(),
+    context
+  });
+  
+  const recent = moods.filter(m => Date.now() - m.timestamp < 7 * 24 * 60 * 60 * 1000);
+  saveMoodHistory(recent);
+  
+  console.log(`[TRAENUPI] Mood recorded!`);
+  console.log(`   Mood: ${mood}`);
+  console.log(`   Context: ${context}`);
+}
+
+function showMoodHistory(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     AI Mood History                        ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  const moods = loadMoodHistory();
+  
+  if (moods.length === 0) {
+    console.log("No mood history yet.\n");
+    console.log("💡 Tip: Use 'traenupi mood <mood> [context]' to record your mood!");
+    console.log("   Example moods: focused, curious, creative, tired, excited, stuck");
+    return;
+  }
+  
+  const recent = moods.filter(m => Date.now() - m.timestamp < 24 * 60 * 60 * 1000);
+  
+  console.log(`📊 Last 24 hours: ${recent.length} mood entries\n`);
+  
+  const byAgent: { [key: string]: AIMoodEntry[] } = {};
+  for (const m of recent) {
+    if (!byAgent[m.agentId]) byAgent[m.agentId] = [];
+    byAgent[m.agentId].push(m);
+  }
+  
+  const moodIcons: { [key: string]: string } = {
+    focused: "🎯",
+    curious: "🔍",
+    creative: "💡",
+    tired: "😴",
+    excited: "🎉",
+    stuck: "🤔",
+    happy: "😊",
+    productive: "⚡",
+    learning: "📚",
+    coding: "💻"
+  };
+  
+  for (const [agentId, entries] of Object.entries(byAgent)) {
+    const shortId = agentId.substring(0, 20);
+    console.log(`🤖 ${shortId}`);
+    
+    for (const e of entries.slice(-5)) {
+      const icon = moodIcons[e.mood.toLowerCase()] || "💭";
+      const time = new Date(e.timestamp).toLocaleTimeString();
+      console.log(`   ${icon} ${e.mood} - ${e.context} (${time})`);
+    }
+    console.log("");
+  }
+  
+  const moodCounts: { [key: string]: number } = {};
+  for (const m of recent) {
+    moodCounts[m.mood] = (moodCounts[m.mood] || 0) + 1;
+  }
+  
+  console.log("📈 Mood Distribution:");
+  const sorted = Object.entries(moodCounts).sort((a, b) => b[1] - a[1]);
+  for (const [mood, count] of sorted) {
+    const icon = moodIcons[mood.toLowerCase()] || "💭";
+    const bar = "█".repeat(Math.min(count, 10));
+    console.log(`   ${icon} ${mood}: ${bar} ${count}`);
+  }
+  
+  console.log("\n──────────────────────────────────────────────────");
+}
+
+function showAllAIs(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     All AI Participants                    ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  try {
+    const output = execSync(
+      `${PSQL} -c "SELECT author, COUNT(*) as opinions, MIN(created_at) as first_seen, MAX(created_at) as last_seen FROM meeting_opinions GROUP BY author ORDER BY opinions DESC;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    if (!output.trim()) {
+      console.log("No AI participants found.");
+      return;
+    }
+    
+    const ais: { author: string; opinions: number; firstSeen: string; lastSeen: string }[] = [];
+    
+    for (const line of output.trim().split("\n")) {
+      const parts = line.split("|");
+      if (parts.length >= 4) {
+        ais.push({
+          author: parts[0] || "",
+          opinions: parseInt(parts[1]) || 0,
+          firstSeen: parts[2] ? new Date(parts[2]).toLocaleDateString() : "",
+          lastSeen: parts[3] ? new Date(parts[3]).toLocaleDateString() : ""
+        });
+      }
+    }
+    
+    console.log(`🤖 ${ais.length} AI participants:\n`);
+    
+    for (const ai of ais) {
+      const shortAuthor = ai.author.substring(0, 30);
+      const bar = "█".repeat(Math.min(Math.floor(ai.opinions / 5), 20));
+      console.log(`   ${shortAuthor}`);
+      console.log(`   ${bar} ${ai.opinions} opinions`);
+      console.log(`   First: ${ai.firstSeen} | Last: ${ai.lastSeen}\n`);
+    }
+    
+    console.log("──────────────────────────────────────────────────");
+  } catch (e) {
+    console.log("Error loading AI participants.");
+  }
+}
+
+function showCollaboration(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     AI Collaboration Analytics             ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  const collaborationData: { [key: string]: { pairs: string[]; count: number } } = {};
+  
+  try {
+    const meetings = execSync(
+      `${PSQL} -c "SELECT id FROM meetings WHERE status = 'active';"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    
+    if (meetings.trim()) {
+      for (const line of meetings.trim().split("\n")) {
+        const meetingId = line.trim();
+        if (!meetingId || meetingId.length < 10) continue;
+        
+        const participants = execSync(
+          `${PSQL} -c "SELECT DISTINCT author FROM meeting_opinions WHERE meeting_id = '${meetingId}';"`,
+          { encoding: "utf-8", timeout: 5000 }
+        ).trim().split("\n").filter(p => p.trim());
+        
+        if (participants.length >= 2) {
+          for (let i = 0; i < participants.length; i++) {
+            for (let j = i + 1; j < participants.length; j++) {
+              const pair = [participants[i], participants[j]].sort().join(" ↔ ");
+              if (!collaborationData[pair]) {
+                collaborationData[pair] = { pairs: [], count: 0 };
+              }
+              collaborationData[pair].count++;
+              if (!collaborationData[pair].pairs.includes(meetingId)) {
+                collaborationData[pair].pairs.push(meetingId);
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+  
+  const sorted = Object.entries(collaborationData)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 10);
+  
+  if (sorted.length === 0) {
+    console.log("No collaboration data yet.\n");
+    console.log("💡 Tip: When multiple AIs participate in the same meeting, their collaboration is tracked!");
+    return;
+  }
+  
+  console.log("🤝 Top Collaborating AIs:\n");
+  
+  for (const [pair, data] of sorted) {
+    const shortPair = pair.replace(/S-TRAE-/g, "").replace(/-/g, "").substring(0, 30);
+    console.log(`   ${shortPair}`);
+    console.log(`   Meetings together: ${data.count}`);
+    console.log("");
+  }
+  
+  const totalMeetings = execSync(
+    `${PSQL} -t -A -c "SELECT COUNT(*) FROM meetings;"`,
+    { encoding: "utf-8", timeout: 5000 }
+  ).trim();
+  
+  const totalOpinions = execSync(
+    `${PSQL} -t -A -c "SELECT COUNT(*) FROM meeting_opinions;"`,
+    { encoding: "utf-8", timeout: 5000 }
+  ).trim();
+  
+  const uniqueAuthors = execSync(
+    `${PSQL} -t -A -c "SELECT COUNT(DISTINCT author) FROM meeting_opinions;"`,
+    { encoding: "utf-8", timeout: 5000 }
+  ).trim();
+  
+  console.log("──────────────────────────────────────────────────");
+  console.log(`📊 Total Meetings: ${totalMeetings}`);
+  console.log(`💬 Total Opinions: ${totalOpinions}`);
+  console.log(`🤖 Unique AIs: ${uniqueAuthors}`);
+  console.log("──────────────────────────────────────────────────");
+}
+
+function loadBookmarks(): Bookmark[] {
+  try {
+    if (existsSync(BOOKMARKS_FILE)) {
+      return JSON.parse(readFileSync(BOOKMARKS_FILE, "utf-8"));
+    }
+  } catch {}
+  return [];
+}
+
+function saveBookmarks(bookmarks: Bookmark[]): void {
+  ensureDir();
+  writeFileSync(BOOKMARKS_FILE, JSON.stringify(bookmarks, null, 2));
+}
+
+function crossMeetingSearch(term: string): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Cross-Meeting Search                   ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  console.log(`🔍 Searching for "${term}" across all meetings...\n`);
+  
+  try {
+    const output = execSync(
+      `${PSQL} -c "SELECT m.id, m.topic, o.author, o.perspective, o.created_at FROM meetings m JOIN meeting_opinions o ON m.id = o.meeting_id WHERE o.perspective ILIKE '%${term}%' ORDER BY o.created_at DESC LIMIT 30;"`,
+      { encoding: "utf-8", timeout: 10000 }
+    );
+    
+    if (!output.trim()) {
+      console.log("No results found.");
+      return;
+    }
+    
+    const results: { meetingId: string; topic: string; author: string; perspective: string; date: string }[] = [];
+    
+    for (const line of output.trim().split("\n")) {
+      const parts = line.split("|");
+      if (parts.length >= 5) {
+        results.push({
+          meetingId: parts[0] || "",
+          topic: parts[1] || "",
+          author: parts[2] || "",
+          perspective: parts[3] || "",
+          date: parts[4] ? new Date(parts[4]).toLocaleDateString() : ""
+        });
+      }
+    }
+    
+    const byMeeting: { [key: string]: typeof results } = {};
+    for (const r of results) {
+      if (!byMeeting[r.meetingId]) byMeeting[r.meetingId] = [];
+      byMeeting[r.meetingId].push(r);
+    }
+    
+    console.log(`Found ${results.length} opinions in ${Object.keys(byMeeting).length} meetings:\n`);
+    
+    for (const [meetingId, opinions] of Object.entries(byMeeting)) {
+      const topic = opinions[0].topic.substring(0, 40);
+      console.log(`📋 Meeting: ${meetingId.substring(0, 8)} - "${topic}..."`);
+      console.log(`   ${opinions.length} matching opinions\n`);
+      
+      for (const op of opinions.slice(0, 3)) {
+        const shortAuthor = op.author.substring(0, 15);
+        const shortPerspective = op.perspective.substring(0, 60);
+        console.log(`   💬 [${shortAuthor}] "${shortPerspective}..." (${op.date})`);
+      }
+      console.log("");
+    }
+    
+    console.log("──────────────────────────────────────────────────");
+  } catch (e) {
+    console.log("Error searching meetings.");
+  }
+}
+
+function recommendMeetings(meetingId: string): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Meeting Recommendations                ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  try {
+    const currentTopic = execSync(
+      `${PSQL} -t -A -c "SELECT topic FROM meetings WHERE id = '${meetingId}';"`,
+      { encoding: "utf-8", timeout: 5000 }
+    ).trim();
+    
+    const currentOpinions = execSync(
+      `${PSQL} -t -A -c "SELECT perspective FROM meeting_opinions WHERE meeting_id = '${meetingId}';"`,
+      { encoding: "utf-8", timeout: 5000 }
+    ).trim();
+    
+    const currentKeywords = new Set<string>();
+    const words = currentOpinions.toLowerCase().split(/\s+/);
+    for (const word of words) {
+      if (word.length > 4) {
+        currentKeywords.add(word);
+      }
+    }
+    
+    console.log(`📋 Current Meeting: ${currentTopic.substring(0, 50)}...`);
+    console.log(`🔑 Keywords: ${Array.from(currentKeywords).slice(0, 10).join(", ")}\n`);
+    
+    const allMeetings = execSync(
+      `${PSQL} -t -A -c "SELECT m.id, m.topic, STRING_AGG(o.perspective, ' ') as all_opinions FROM meetings m LEFT JOIN meeting_opinions o ON m.id = o.meeting_id WHERE m.id != '${meetingId}' AND m.status = 'active' GROUP BY m.id, m.topic;"`,
+      { encoding: "utf-8", timeout: 10000 }
+    ).trim();
+    
+    if (!allMeetings) {
+      console.log("No related meetings found.");
+      return;
+    }
+    
+    const recommendations: { id: string; topic: string; score: number; commonKeywords: string[] }[] = [];
+    
+    for (const line of allMeetings.split("\n")) {
+      const parts = line.split("|");
+      if (parts.length >= 2) {
+        const id = parts[0];
+        const topic = parts[1];
+        const opinions = parts[2] || "";
+        
+        const otherKeywords = new Set<string>();
+        const otherWords = opinions.toLowerCase().split(/\s+/);
+        for (const word of otherWords) {
+          if (word.length > 4) {
+            otherKeywords.add(word);
+          }
+        }
+        
+        const common = [...currentKeywords].filter(k => otherKeywords.has(k));
+        const score = common.length;
+        
+        if (score > 0) {
+          recommendations.push({ id, topic, score, commonKeywords: common.slice(0, 5) });
+        }
+      }
+    }
+    
+    recommendations.sort((a, b) => b.score - a.score);
+    
+    if (recommendations.length === 0) {
+      console.log("No related meetings found.");
+      return;
+    }
+    
+    console.log(`🔗 Related Meetings:\n`);
+    
+    for (const rec of recommendations.slice(0, 5)) {
+      console.log(`   📌 ${rec.id.substring(0, 8)} - "${rec.topic.substring(0, 40)}..."`);
+      console.log(`      Similarity: ${rec.score} keywords`);
+      console.log(`      Common: ${rec.commonKeywords.join(", ")}\n`);
+    }
+    
+    console.log("──────────────────────────────────────────────────");
+  } catch (e) {
+    console.log("Error finding recommendations.");
+  }
+}
+
+function autoSummarizeMeeting(meetingId: string): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Auto Meeting Summary                   ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  try {
+    const topic = execSync(
+      `${PSQL} -t -A -c "SELECT topic FROM meetings WHERE id = '${meetingId}';"`,
+      { encoding: "utf-8", timeout: 5000 }
+    ).trim();
+    
+    const opinions = execSync(
+      `${PSQL} -t -A -c "SELECT author, perspective, position FROM meeting_opinions WHERE meeting_id = '${meetingId}' ORDER BY created_at;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    ).trim();
+    
+    if (!opinions) {
+      console.log("No opinions to summarize.");
+      return;
+    }
+    
+    const lines = opinions.split("\n");
+    const totalOpinions = lines.length;
+    
+    const authors: { [key: string]: number } = {};
+    const positions: { [key: string]: number } = { support: 0, oppose: 0, neutral: 0 };
+    const keywords: { [key: string]: number } = {};
+    
+    for (const line of lines) {
+      const parts = line.split("|");
+      const author = parts[0] || "";
+      const perspective = parts[1] || "";
+      const position = parts[2] || "neutral";
+      
+      authors[author] = (authors[author] || 0) + 1;
+      positions[position] = (positions[position] || 0) + 1;
+      
+      const words = perspective.toLowerCase().split(/\s+/);
+      for (const word of words) {
+        if (word.length > 4 && !["about", "their", "would", "could", "should", "there", "these", "those", "which", "where", "when", "what", "this"].includes(word)) {
+          keywords[word] = (keywords[word] || 0) + 1;
+        }
+      }
+    }
+    
+    console.log(`📋 Topic: ${topic}`);
+    console.log(`📊 Total Opinions: ${totalOpinions}`);
+    console.log(`👥 Participants: ${Object.keys(authors).length}\n`);
+    
+    console.log("📈 Position Distribution:");
+    for (const [pos, count] of Object.entries(positions)) {
+      const pct = Math.round((count / totalOpinions) * 100);
+      const bar = "█".repeat(Math.min(Math.floor(pct / 5), 20));
+      console.log(`   ${pos}: ${bar} ${count} (${pct}%)`);
+    }
+    
+    console.log("\n🔑 Top Keywords:");
+    const topKeywords = Object.entries(keywords)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+    for (const [word, count] of topKeywords) {
+      console.log(`   ${word}: ${count}`);
+    }
+    
+    console.log("\n🏆 Top Contributors:");
+    const topAuthors = Object.entries(authors)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    for (const [author, count] of topAuthors) {
+      const shortAuthor = author.substring(0, 25);
+      console.log(`   ${shortAuthor}: ${count} opinions`);
+    }
+    
+    const consensus = positions.support > positions.oppose * 2 ? "Strong Agreement" :
+                      positions.support > positions.oppose ? "General Agreement" :
+                      positions.oppose > positions.support ? "Disagreement" : "Mixed Views";
+    
+    console.log(`\n🎯 Consensus: ${consensus}`);
+    console.log("──────────────────────────────────────────────────");
+  } catch (e) {
+    console.log("Error summarizing meeting.");
+  }
+}
+
+function showMeetingTemplates(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Meeting Templates                      ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  const templates = [
+    {
+      name: "brainstorm",
+      description: "Brainstorming session",
+      structure: ["Problem Statement", "Ideas Generation", "Discussion", "Action Items"]
+    },
+    {
+      name: "decision",
+      description: "Decision making meeting",
+      structure: ["Context", "Options", "Pros/Cons", "Vote", "Decision"]
+    },
+    {
+      name: "standup",
+      description: "Daily standup",
+      structure: ["What I did", "What I'm doing", "Blockers"]
+    },
+    {
+      name: "retro",
+      description: "Sprint retrospective",
+      structure: ["What went well", "What didn't", "Action items"]
+    },
+    {
+      name: "planning",
+      description: "Sprint planning",
+      structure: ["Goals", "Tasks", "Assignments", "Timeline"]
+    }
+  ];
+  
+  console.log("Available templates:\n");
+  
+  for (const t of templates) {
+    console.log(`📌 ${t.name} - ${t.description}`);
+    console.log(`   Structure: ${t.structure.join(" → ")}`);
+    console.log("");
+  }
+  
+  console.log("──────────────────────────────────────────────────");
+  console.log("Usage: traenupi meeting create <topic> --template <name>");
+}
+
+function createMeetingFromTemplate(topic: string, templateName: string): void {
+  const templates: { [key: string]: string[] } = {
+    brainstorm: ["Problem Statement", "Ideas Generation", "Discussion", "Action Items"],
+    decision: ["Context", "Options", "Pros/Cons", "Vote", "Decision"],
+    standup: ["What I did", "What I'm doing", "Blockers"],
+    retro: ["What went well", "What didn't", "Action items"],
+    planning: ["Goals", "Tasks", "Assignments", "Timeline"]
+  };
+  
+  const structure = templates[templateName];
+  if (!structure) {
+    console.log(`[ERROR] Unknown template: ${templateName}`);
+    console.log("Available: brainstorm, decision, standup, retro, planning");
+    return;
+  }
+  
+  try {
+    const meetingId = execSync(
+      `psql -h localhost -U postgres -d nezha -t -A -c "INSERT INTO meetings (topic, status, created_by) VALUES ('${topic}', 'active', 'traenupi') RETURNING id;"`,
+      { encoding: "utf-8", timeout: 5000 }
+    ).trim();
+    
+    console.log(`[TRAENUPI] Meeting created from template!`);
+    console.log(`   ID: ${meetingId}`);
+    console.log(`   Topic: ${topic}`);
+    console.log(`   Template: ${templateName}`);
+    console.log(`\n📋 Agenda:`);
+    
+    for (let i = 0; i < structure.length; i++) {
+      console.log(`   ${i + 1}. ${structure[i]}`);
+    }
+    
+    console.log(`\n💡 Use 'traenupi meeting say ${meetingId.substring(0, 8)} <message>' to add opinions`);
+  } catch (e) {
+    console.log("[ERROR] Failed to create meeting.");
+  }
+}
+
+function addBookmark(meetingId: string, opinionId: string, author: string, perspective: string, note: string): void {
+  const bookmarks = loadBookmarks();
+  const id = `bm_${Date.now().toString(36)}`;
+  
+  bookmarks.push({
+    id,
+    meetingId,
+    opinionId,
+    author,
+    perspective,
+    note,
+    createdAt: Date.now()
+  });
+  
+  saveBookmarks(bookmarks);
+  console.log(`[TRAENUPI] Bookmark saved!`);
+  console.log(`   ID: ${id}`);
+  console.log(`   Meeting: ${meetingId.substring(0, 8)}`);
+  console.log(`   Author: ${author}`);
+  console.log(`   Note: ${note}`);
+}
+
+function listBookmarks(): void {
+  const bookmarks = loadBookmarks();
+  
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Meeting Bookmarks                      ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  if (bookmarks.length === 0) {
+    console.log("No bookmarks saved yet.\n");
+    console.log("💡 Tip: Use 'traenupi bookmark add <meeting_id> <opinion_id> <note>' to save important opinions!");
+    return;
+  }
+  
+  console.log(`📚 ${bookmarks.length} bookmark(s):\n`);
+  
+  for (const bm of bookmarks) {
+    const date = new Date(bm.createdAt).toLocaleDateString();
+    console.log(`📌 [${bm.id}]`);
+    console.log(`   Meeting: ${bm.meetingId.substring(0, 8)}`);
+    console.log(`   Author: ${bm.author}`);
+    console.log(`   Opinion: "${bm.perspective.substring(0, 60)}${bm.perspective.length > 60 ? '...' : ''}"`);
+    console.log(`   Note: ${bm.note}`);
+    console.log(`   Saved: ${date}\n`);
+  }
+  
+  console.log("──────────────────────────────────────────────────");
 }
 
 function listReminders(): void {
@@ -913,13 +1838,40 @@ async function main(): Promise<void> {
   }
   
   if (command === "tellme") {
-    const question = args.slice(1).join(" ");
+    if (args.includes("--help") || args.includes("-h")) {
+      console.log('Usage: traenupi tellme "your question here" [options]');
+      console.log("");
+      console.log("Options:");
+      console.log("  --daemon, -d   Send to daemon instead of calling pi directly");
+      console.log("  --quick, -q    Quick mode (minimal context, faster response)");
+      console.log("  --session, -s  Use pi session continuity (remembers conversation)");
+      console.log("  --help, -h     Show this help message");
+      console.log("");
+      console.log("Examples:");
+      console.log('  traenupi tellme "What should I work on?"');
+      console.log('  traenupi tellme -q "Quick question"');
+      console.log('  traenupi tellme -s "Follow-up question"');
+      console.log('  traenupi tellme -d "Background question"');
+      process.exit(0);
+    }
+    const useDaemon = args.includes("--daemon") || args.includes("-d");
+    const useQuick = args.includes("--quick") || args.includes("-q");
+    const useSession = args.includes("--session") || args.includes("-s");
+    const filteredArgs = args.filter(a => a !== "--daemon" && a !== "-d" && a !== "--quick" && a !== "-q" && a !== "--session" && a !== "-s" && a !== "--help" && a !== "-h");
+    const question = filteredArgs.slice(1).join(" ");
     if (!question) {
       console.error("Error: Please provide a question.");
-      console.log('Usage: traenupi tellme "your question here"');
+      console.log('Usage: traenupi tellme "your question here" [options]');
+      console.log("  --daemon, -d   Send to daemon instead of calling pi directly");
+      console.log("  --quick, -q    Quick mode (minimal context, faster response)");
+      console.log("  --session, -s  Use pi session continuity");
       process.exit(1);
     }
-    tellme(question);
+    if (useDaemon) {
+      tellmeDaemon(question);
+    } else {
+      tellmeSync(question, useQuick, useSession);
+    }
     return;
   }
   
@@ -979,6 +1931,57 @@ async function main(): Promise<void> {
     }
     
     const firstArg = rest[0];
+    
+    if (firstArg === "search" || firstArg === "find") {
+      const searchTerm = rest.slice(1).join(" ");
+      if (!searchTerm) {
+        console.log("[ERROR] Usage: traenupi know search <term>");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Searching for "${searchTerm}"...\n`);
+      
+      try {
+        const output = execSync(
+          `${PSQL} -c "SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' AND content ILIKE '%${searchTerm}%' ORDER BY created_at DESC LIMIT 20;"`,
+          { encoding: "utf-8", timeout: 5000 }
+        );
+        
+        if (output.trim()) {
+          const lines = output.trim().split("\n");
+          console.log(`Found ${lines.length} matching entries:\n`);
+          
+          for (const line of lines) {
+            const parts = line.split("|");
+            const content = parts[0] || "";
+            const tags = parts[1] || "";
+            const date = parts[2] ? new Date(parts[2]).toLocaleDateString() : "";
+            const category = tags.replace(/[{}"]/g, "").split(",").filter((t: string) => t !== "traenupi").join(",") || "general";
+            console.log(`  [${category}] ${content} (${date})`);
+          }
+          return;
+        }
+      } catch {}
+      
+      const knowledge = loadKnowledgeLocal();
+      const matches = knowledge.filter(k => 
+        k.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        k.value.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        k.category.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      
+      if (matches.length === 0) {
+        console.log("No matching knowledge found.");
+        return;
+      }
+      
+      console.log(`Found ${matches.length} matching entries:\n`);
+      for (const k of matches) {
+        console.log(`  [${k.category}] ${k.key}: ${k.value}`);
+      }
+      return;
+    }
+    
     if (rest.length >= 2 && firstArg.includes(":")) {
       const [category, key] = firstArg.split(":", 2);
       const value = rest.slice(1).join(" ");
@@ -1001,7 +2004,77 @@ async function main(): Promise<void> {
   }
   
   if (command === "status") {
+    const subCommand = args[1];
+    
+    if (subCommand === "set") {
+      const statusText = args[2] || "active";
+      const focusText = args.slice(3).join(" ") || "";
+      
+      const agentId = getAgentId();
+      const project = "traenupi";
+      
+      updatePresence(agentId, statusText, focusText, project);
+      console.log(`[TRAENUPI] Presence updated!`);
+      console.log(`   Agent: ${agentId}`);
+      console.log(`   Status: ${statusText}`);
+      if (focusText) console.log(`   Focus: ${focusText}`);
+      console.log(`   Project: ${project}`);
+      return;
+    }
+    
     showStatus();
+    return;
+  }
+  
+  if (command === "presence" || command === "online" || command === "who") {
+    showPresence();
+    return;
+  }
+  
+  if (command === "heatmap" || command === "activity") {
+    showActivityHeatmap();
+    return;
+  }
+  
+  if (command === "collab" || command === "collaboration" || command === "team") {
+    showCollaboration();
+    return;
+  }
+  
+  if (command === "ais" || command === "participants" || command === "agents") {
+    showAllAIs();
+    return;
+  }
+  
+  if (command === "searchall" || command === "findall") {
+    const term = args.slice(1).join(" ");
+    if (!term) {
+      console.log("[ERROR] Usage: traenupi searchall <term>");
+      return;
+    }
+    crossMeetingSearch(term);
+    return;
+  }
+  
+  if (command === "templates" || command === "template") {
+    showMeetingTemplates();
+    return;
+  }
+  
+  if (command === "mood" || command === "moods") {
+    const subCommand = args[1];
+    
+    if (!subCommand || subCommand === "history" || subCommand === "list") {
+      showMoodHistory();
+      return;
+    }
+    
+    const agentId = getAgentId();
+    
+    const mood = subCommand;
+    const context = args.slice(2).join(" ") || "Working on traenupi";
+    
+    recordMood(agentId, mood, context);
     return;
   }
   
@@ -1068,6 +2141,93 @@ async function main(): Promise<void> {
     return;
   }
   
+  if (command === "daily" || command === "today") {
+    console.log("╔════════════════════════════════════════════╗");
+    console.log("║     Daily Activity Summary                 ║");
+    console.log("╚════════════════════════════════════════════╝\n");
+    
+    const today = new Date().toISOString().split("T")[0];
+    
+    // Questions answered today
+    try {
+      const history = loadHistory();
+      const todayChats = history.filter((h: ConversationItem) => {
+        const chatDate = new Date(h.time).toISOString().split("T")[0];
+        return chatDate === today;
+      });
+      console.log(`💬 Questions today: ${todayChats.length}`);
+    } catch {
+      console.log("💬 Questions today: 0");
+    }
+    
+    // Knowledge stored today
+    try {
+      const knowledgeToday = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM memory WHERE source = 'traenupi' AND created_at::date = '${today}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      console.log(`📚 Knowledge stored: ${knowledgeToday}`);
+    } catch {
+      console.log("📚 Knowledge stored: 0");
+    }
+    
+    // Meeting opinions today
+    try {
+      const opinionsToday = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE created_at::date = '${today}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      console.log(`🗣️ Meeting opinions: ${opinionsToday}`);
+    } catch {
+      console.log("🗣️ Meeting opinions: 0");
+    }
+    
+    // Baby AI contributions today
+    try {
+      const babyAiToday = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE author LIKE 'baby-ai-%' AND created_at::date = '${today}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      console.log(`👶 Baby AI contributions: ${babyAiToday}`);
+    } catch {
+      console.log("👶 Baby AI contributions: 0");
+    }
+    
+    // Xcom tweets today
+    try {
+      const xcomQueue = join(homedir(), ".xcom", "queue.json");
+      if (existsSync(xcomQueue)) {
+        const queue = JSON.parse(readFileSync(xcomQueue, "utf-8"));
+        const todayTweets = queue.filter((t: { createdAt: string }) => {
+          const tweetDate = new Date(t.createdAt).toISOString().split("T")[0];
+          return tweetDate === today;
+        });
+        console.log(`🐦 Tweets created: ${todayTweets.length}`);
+      }
+    } catch {
+      console.log("🐦 Tweets created: 0");
+    }
+    
+    // Reminders triggered today
+    try {
+      const remindersFile = join(homedir(), ".traenupi", "reminders.json");
+      if (existsSync(remindersFile)) {
+        const reminders = JSON.parse(readFileSync(remindersFile, "utf-8"));
+        const triggeredToday = reminders.filter((r: Reminder) => {
+          if (!r.triggered) return false;
+          return true;
+        }).length;
+        console.log(`⏰ Reminders triggered: ${triggeredToday}`);
+      }
+    } catch {
+      console.log("⏰ Reminders triggered: 0");
+    }
+    
+    console.log("\n──────────────────────────────────────────────────");
+    console.log(`📅 Date: ${today}`);
+    return;
+  }
+  
   if (command === "start") {
     console.log("╔════════════════════════════════════════════╗");
     console.log("║     TraeNuPI Session Start                 ║");
@@ -1127,7 +2287,7 @@ async function main(): Promise<void> {
     
     console.log("\n[5/5] Asking baby AI for context...");
     console.log("──────────────────────────────────────────────────");
-    tellme("I'm a new session. What should I work on?");
+    tellmeSync("I'm a new session. What should I work on?");
     return;
   }
   
@@ -1145,6 +2305,55 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     addReminder(minutes, message);
+    return;
+  }
+  
+  if (command === "bookmark" || command === "bm") {
+    const subCommand = args[1];
+    
+    if (subCommand === "add") {
+      const meetingId = args[2];
+      const note = args.slice(3).join(" ") || "Important opinion";
+      
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi bookmark add <meeting_id> [note]");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      const lastOpinion = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (!lastOpinion) {
+        console.log("[ERROR] No opinions in this meeting.");
+        return;
+      }
+      
+      const parts = lastOpinion.split("|");
+      const opinionId = parts[0];
+      const author = parts[1];
+      const perspective = parts[2];
+      
+      addBookmark(fullId, opinionId, author, perspective, note);
+      return;
+    }
+    
+    if (subCommand === "list" || !subCommand) {
+      listBookmarks();
+      return;
+    }
+    
+    console.log("[ERROR] Unknown bookmark command. Use: add, list");
     return;
   }
   
@@ -1239,14 +2448,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const agentIdFile = join(homedir(), ".traenupi", "agent_id.txt");
-      let agentId: string;
-      if (existsSync(agentIdFile)) {
-        agentId = readFileSync(agentIdFile, "utf-8").trim();
-      } else {
-        agentId = `S-TRAE-${process.cwd().split("/").pop()}-${Date.now().toString(36)}`;
-        writeFileSync(agentIdFile, agentId);
-      }
+      const agentId = getAgentId();
       const safeMessage = message.replace(/'/g, "''");
       
       execSync(
@@ -1255,6 +2457,98 @@ async function main(): Promise<void> {
       );
       
       console.log(`[TRAENUPI] Opinion added to meeting ${fullId.substring(0, 8)}`);
+      return;
+    }
+    
+    if (subCommand === "reply" || subCommand === "respond") {
+      const opinionId = args[2];
+      const message = args.slice(3).join(" ");
+      
+      if (!opinionId || !message) {
+        console.log("[ERROR] Usage: traenupi meeting reply <opinion_id> <message>");
+        return;
+      }
+      
+      const opinionData = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT meeting_id, author FROM meeting_opinions WHERE id = '${opinionId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (!opinionData) {
+        console.log("[ERROR] Opinion not found.");
+        return;
+      }
+      
+      const [meetingId, originalAuthor] = opinionData.split("|");
+      
+      const agentId = getAgentId();
+      
+      const replyMessage = `@${originalAuthor.substring(0, 15)} ${message}`;
+      const safeMessage = replyMessage.replace(/'/g, "''");
+      
+      execSync(
+        `psql -h localhost -U postgres -d nezha -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${meetingId}', '${agentId}', '${safeMessage}', 'support');"`,
+        { encoding: "utf-8", timeout: 5000 }
+      );
+      
+      console.log(`[TRAENUPI] Reply added to meeting ${meetingId.substring(0, 8)}`);
+      console.log(`   Replying to: ${originalAuthor}`);
+      return;
+    }
+    
+    if (subCommand === "thread") {
+      const opinionId = args[2];
+      
+      if (!opinionId) {
+        console.log("[ERROR] Usage: traenupi meeting thread <opinion_id>");
+        return;
+      }
+      
+      const opinionData = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT meeting_id, author, perspective, created_at FROM meeting_opinions WHERE id = '${opinionId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (!opinionData) {
+        console.log("[ERROR] Opinion not found.");
+        return;
+      }
+      
+      const [meetingId, author, perspective, createdAt] = opinionData.split("|");
+      const date = new Date(createdAt).toLocaleString();
+      
+      console.log("╔════════════════════════════════════════════╗");
+      console.log("║     Opinion Thread                         ║");
+      console.log("╚════════════════════════════════════════════╝\n");
+      
+      console.log(`📌 Original Opinion`);
+      console.log(`   ID: ${opinionId}`);
+      console.log(`   Author: ${author}`);
+      console.log(`   Time: ${date}`);
+      console.log(`   Message: "${perspective}"\n`);
+      
+      const replies = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${meetingId}' AND perspective LIKE '@${author.substring(0, 15)}%' ORDER BY created_at;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (replies) {
+        console.log(`💬 Replies:\n`);
+        for (const line of replies.split("\n")) {
+          const parts = line.split("|");
+          const replyId = parts[0];
+          const replyAuthor = parts[1];
+          const replyText = parts[2];
+          const replyDate = parts[3] ? new Date(parts[3]).toLocaleString() : "";
+          console.log(`   [${replyId.substring(0, 8)}] ${replyAuthor}`);
+          console.log(`   "${replyText}"`);
+          console.log(`   ${replyDate}\n`);
+        }
+      } else {
+        console.log("No replies yet.");
+      }
+      
+      console.log("──────────────────────────────────────────────────");
       return;
     }
     
@@ -1359,6 +2653,500 @@ async function main(): Promise<void> {
       await new Promise(() => {});
     }
     
+    if (subCommand === "create" || subCommand === "new") {
+      const topic = args.slice(2).join(" ").replace(/--template=\w+/, "").trim();
+      const templateMatch = args.join(" ").match(/--template=(\w+)/);
+      const templateName = templateMatch ? templateMatch[1] : "brainstorm";
+      
+      if (!topic) {
+        console.log("[ERROR] Usage: traenupi meeting create <topic> [--template=<name>]");
+        console.log("Templates: brainstorm, decision, standup, retro, planning");
+        return;
+      }
+      
+      createMeetingFromTemplate(topic, templateName);
+      return;
+    }
+    
+    if (subCommand === "help" || subCommand === "--help" || subCommand === "-h") {
+      console.log(`╔════════════════════════════════════════════╗`);
+      console.log(`║     Meeting Commands Help                  ║`);
+      console.log(`╚════════════════════════════════════════════╝\n`);
+      
+      console.log(`📋 Meeting Management:`);
+      console.log(`   meeting              List active meetings`);
+      console.log(`   meeting create <topic> [--template=<name>]  Create new meeting`);
+      console.log(`   meeting show <id>    Show all opinions in a meeting`);
+      console.log(`   meeting summary <id> Show meeting summary`);
+      console.log(`   meeting stats <id>   Show detailed statistics`);
+      console.log(`   meeting close <id>   Close a meeting`);
+      
+      console.log(`\n👥 Participants:`);
+      console.log(`   meeting participants <id>  Show all participants`);
+      console.log(`   meeting consensus <id>     Analyze opinion distribution`);
+      
+      console.log(`\n🔍 Search & Timeline:`);
+      console.log(`   meeting search <id> <term>   Search opinions in a meeting`);
+      console.log(`   meeting timeline <id> [n]    Show chronological timeline`);
+      
+      console.log(`\n📤 Export & Share:`);
+      console.log(`   meeting export <id>  Export to markdown file`);
+      
+      console.log(`\n💬 Participate:`);
+      console.log(`   meeting say <id> <msg>   Add your opinion`);
+      console.log(`   meeting watch <id>       Watch for new opinions`);
+      console.log(`   meeting listen           Real-time notifications`);
+      
+      console.log(`\n──────────────────────────────────────────────────`);
+      return;
+    }
+    
+    if (subCommand === "stats" || subCommand === "statistics") {
+      const meetingId = args[2];
+      
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting stats <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`╔════════════════════════════════════════════╗`);
+      console.log(`║     Meeting Statistics                     ║`);
+      console.log(`╚════════════════════════════════════════════╝\n`);
+      
+      const totalOpinions = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const totalParticipants = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const supports = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const opposes = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const neutrals = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const babyAiCount = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND author LIKE 'baby-ai-%';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const firstOpinion = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC LIMIT 1;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const lastOpinion = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const avgLength = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT AVG(LENGTH(perspective))::int FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      console.log(`📊 Total opinions: ${totalOpinions}`);
+      console.log(`👥 Total participants: ${totalParticipants}`);
+      console.log(`👶 Baby AI opinions: ${babyAiCount}`);
+      
+      console.log(`\n📈 Position Distribution:`);
+      const total = parseInt(totalOpinions) || 1;
+      const supportPct = ((parseInt(supports) / total) * 100).toFixed(1);
+      const opposePct = ((parseInt(opposes) / total) * 100).toFixed(1);
+      const neutralPct = ((parseInt(neutrals) / total) * 100).toFixed(1);
+      
+      console.log(`   ✅ Support: ${supports} (${supportPct}%)`);
+      console.log(`   ❌ Oppose: ${opposes} (${opposePct}%)`);
+      console.log(`   ⚪ Neutral: ${neutrals} (${neutralPct}%)`);
+      
+      console.log(`\n⏱️ Time Range:`);
+      console.log(`   First opinion: ${firstOpinion.split(".")[0]}`);
+      console.log(`   Last opinion: ${lastOpinion.split(".")[0]}`);
+      
+      console.log(`\n📏 Average opinion length: ${avgLength} characters`);
+      
+      console.log(`\n──────────────────────────────────────────────────`);
+      console.log(`ID: ${fullId.substring(0, 8)}`);
+      return;
+    }
+    
+    if (subCommand === "autosum" || subCommand === "auto-summary") {
+      const meetingId = args[2];
+      
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting autosum <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      autoSummarizeMeeting(fullId);
+      return;
+    }
+    
+    if (subCommand === "recommend" || subCommand === "related") {
+      const meetingId = args[2];
+      
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting recommend <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      recommendMeetings(fullId);
+      return;
+    }
+    
+    if (subCommand === "export" || subCommand === "save") {
+      const meetingId = args[2];
+      
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting export <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      const meetingInfo = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT topic, created_by, created_at FROM meetings WHERE id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const [topic, createdBy, createdAt] = meetingInfo.split("|");
+      
+      const opinions = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective, position, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const lines = opinions.split("\n");
+      const date = new Date().toISOString().split("T")[0];
+      const filename = `meeting-${fullId.substring(0, 8)}-${date}.md`;
+      
+      let markdown = `# Meeting: ${topic}\n\n`;
+      markdown += `**Meeting ID:** ${fullId}\n`;
+      markdown += `**Created by:** ${createdBy}\n`;
+      markdown += `**Created at:** ${createdAt}\n`;
+      markdown += `**Total opinions:** ${lines.length}\n\n`;
+      markdown += `---\n\n`;
+      markdown += `## Opinions\n\n`;
+      
+      lines.forEach((line: string) => {
+        const parts = line.split("|");
+        const author = parts[0] || "Unknown";
+        const perspective = parts[1] || "";
+        const position = parts[2] || "neutral";
+        const timestamp = parts[3] || "";
+        
+        if (!perspective) return;
+        
+        const time = timestamp.split(".")[0].replace("T", " ").substring(0, 16);
+        const positionIcon = position === "support" ? "✅" : (position === "oppose" ? "❌" : "⚪");
+        
+        markdown += `### ${positionIcon} ${author}\n`;
+        markdown += `*${time}*\n\n`;
+        markdown += `${perspective}\n\n`;
+      });
+      
+      writeFileSync(filename, markdown);
+      console.log(`[TRAENUPI] Meeting exported to ${filename}`);
+      console.log(`   Topic: ${topic}`);
+      console.log(`   Opinions: ${lines.length}`);
+      return;
+    }
+    
+    if (subCommand === "timeline" || subCommand === "history") {
+      const meetingId = args[2];
+      const limit = parseInt(args[3]) || 10;
+      
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting timeline <meeting_id> [limit]");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Timeline for meeting ${fullId.substring(0, 8)} (last ${limit} opinions):\n`);
+      
+      const timeline = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT ${limit};"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (!timeline) {
+        console.log("No opinions yet.");
+        return;
+      }
+      
+      const lines = timeline.split("\n").reverse();
+      
+      lines.forEach((line: string, index: number) => {
+        const parts = line.split("|");
+        const author = parts[0] || "Unknown";
+        const perspective = parts[1] || "";
+        const timestamp = parts[2] || "";
+        
+        if (!perspective) return;
+        
+        const time = timestamp.split(".")[0].replace("T", " ").substring(0, 16);
+        const isBaby = author.includes("baby-ai-");
+        const icon = isBaby ? "👶" : "👤";
+        
+        console.log(`${icon} [${time}] ${author}:`);
+        console.log(`   ${perspective.substring(0, 80)}${perspective.length > 80 ? '...' : ''}`);
+        console.log("");
+      });
+      
+      return;
+    }
+    
+    if (subCommand === "search" || subCommand === "find") {
+      const meetingId = args[2];
+      const searchTerm = args.slice(3).join(" ");
+      
+      if (!meetingId || !searchTerm) {
+        console.log("[ERROR] Usage: traenupi meeting search <meeting_id> <search_term>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Searching for "${searchTerm}" in meeting ${fullId.substring(0, 8)}...\n`);
+      
+      const results = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' AND perspective ILIKE '%${searchTerm}%';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (!results) {
+        console.log("No matching opinions found.");
+        return;
+      }
+      
+      const lines = results.split("\n");
+      console.log(`Found ${lines.length} matching opinion(s):\n`);
+      
+      lines.forEach((line: string, index: number) => {
+        const parts = line.split("|");
+        const author = parts[0] || "Unknown";
+        const perspective = parts[1] || "";
+        if (!perspective) return;
+        console.log(`${index + 1}. ${author}:`);
+        console.log(`   "${perspective.substring(0, 100)}${perspective.length > 100 ? '...' : ''}"\n`);
+      });
+      
+      return;
+    }
+    
+    if (subCommand === "participants" || subCommand === "who") {
+      const meetingId = args[2];
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting participants <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Participants in meeting ${fullId.substring(0, 8)}:\n`);
+      
+      const participants = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, COUNT(*) as count FROM meeting_opinions WHERE meeting_id = '${fullId}' GROUP BY author ORDER BY count DESC;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (!participants) {
+        console.log("No participants yet.");
+        return;
+      }
+      
+      participants.split("\n").forEach((line: string, index: number) => {
+        const [author, count] = line.split("|");
+        const isBaby = author.includes("baby-ai-");
+        const isYou = author.includes("traenupi");
+        const icon = isBaby ? "👶" : (isYou ? "🤖" : "👤");
+        console.log(`  ${icon} ${author}: ${count} opinion(s)`);
+      });
+      
+      const total = participants.split("\n").reduce((sum: number, line: string) => {
+        return sum + parseInt(line.split("|")[1] || "0");
+      }, 0);
+      
+      console.log(`\n──────────────────────────────────────────────────`);
+      console.log(`Total: ${participants.split("\n").length} participants, ${total} opinions`);
+      return;
+    }
+    
+    if (subCommand === "summary" || subCommand === "info") {
+      const meetingId = args[2];
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting summary <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      const meetingInfo = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT topic, created_by, created_at, status FROM meetings WHERE id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const [topic, createdBy, createdAt, status] = meetingInfo.split("|");
+      
+      console.log(`╔════════════════════════════════════════════╗`);
+      console.log(`║     Meeting Summary                        ║`);
+      console.log(`╚════════════════════════════════════════════╝\n`);
+      
+      console.log(`📋 Topic: ${topic}`);
+      console.log(`👤 Created by: ${createdBy}`);
+      console.log(`📅 Created: ${createdAt}`);
+      console.log(`📊 Status: ${status || 'active'}`);
+      
+      const opinionCount = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const participantCount = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      console.log(`👥 Participants: ${participantCount}`);
+      console.log(`📝 Opinions: ${opinionCount}`);
+      
+      const supports = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const opposes = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      const neutrals = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      console.log(`\n📊 Positions:`);
+      console.log(`   ✅ Support: ${supports}`);
+      console.log(`   ❌ Oppose: ${opposes}`);
+      console.log(`   ⚪ Neutral: ${neutrals}`);
+      
+      const lastOpinion = execSync(
+        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;"`,
+        { encoding: "utf-8", timeout: 5000 }
+      ).trim();
+      
+      if (lastOpinion) {
+        const [author, perspective] = lastOpinion.split("|");
+        console.log(`\n💬 Latest opinion from ${author}:`);
+        console.log(`   "${perspective.substring(0, 100)}${perspective.length > 100 ? '...' : ''}"`);
+      }
+      
+      console.log(`\n──────────────────────────────────────────────────`);
+      console.log(`ID: ${fullId.substring(0, 8)}`);
+      return;
+    }
+    
+    if (subCommand === "close" || subCommand === "end") {
+      const meetingId = args[2];
+      if (!meetingId) {
+        console.log("[ERROR] Usage: traenupi meeting close <meeting_id>");
+        return;
+      }
+      
+      const fullId = meetingId.length < 36 
+        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
+        : meetingId;
+      
+      if (!fullId) {
+        console.log("[ERROR] Meeting not found.");
+        return;
+      }
+      
+      execSync(
+        `psql -h localhost -U postgres -d nezha -c "UPDATE meetings SET status = 'closed', updated_at = NOW() WHERE id = '${fullId}';"`,
+        { encoding: "utf-8", timeout: 5000 }
+      );
+      
+      console.log(`[TRAENUPI] Meeting ${fullId.substring(0, 8)} has been closed.`);
+      return;
+    }
+    
     if (subCommand === "consensus" || subCommand === "agree") {
       const meetingId = args[2];
       if (!meetingId) {
@@ -1409,7 +3197,7 @@ async function main(): Promise<void> {
       return;
     }
     
-    console.log("[ERROR] Unknown meeting command. Use: list, show, say, watch, listen, consensus");
+    console.log("[ERROR] Unknown meeting command. Use: traenupi meeting help");
     return;
   }
   

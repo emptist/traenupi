@@ -122,6 +122,19 @@ function resolveMeetingId(meetingId: string): string | null {
   }
 }
 
+function addOpinion(meetingId: string, author: string, message: string): boolean {
+  const safeMessage = message.replace(/'/g, "''");
+  try {
+    execSync(
+      `${PSQL} -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${meetingId}', '${author}', '${safeMessage}', 'support');"`,
+      { encoding: "utf-8", timeout: 5000 }
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function loadKnowledge(): KnowledgeEntry[] {
   try {
     const output = psqlQuery(`"SELECT content, source, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 50;"`);
@@ -359,13 +372,9 @@ function checkBabyAIParticipation(): void {
       
       if (answer && !answer.startsWith("[Error") && answer.length < 300) {
         const babyAgentId = `baby-ai-${Date.now().toString(36)}`;
-        const safePerspective = answer.replace(/'/g, "''").substring(0, 500);
-        
-        execSync(
-          `psql -h localhost -U postgres -d nezha -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${meetingId}', '${babyAgentId}', '${safePerspective}', 'support');"`,
-          { encoding: "utf-8", timeout: 5000 }
-        );
-        
+
+        addOpinion(meetingId, babyAgentId, answer.substring(0, 500));
+
         console.log(`👶 [BABY AI] Added perspective to meeting ${meetingId.substring(0, 8)}`);
         console.log(`   "${answer.substring(0, 80)}..."`);
         
@@ -2320,9 +2329,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2398,9 +2405,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2439,9 +2444,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2449,13 +2452,9 @@ async function main(): Promise<void> {
       }
       
       const agentId = getAgentId();
-      const safeMessage = message.replace(/'/g, "''");
-      
-      execSync(
-        `psql -h localhost -U postgres -d nezha -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${fullId}', '${agentId}', '${safeMessage}', 'support');"`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
-      
+
+      addOpinion(fullId, agentId, message);
+
       console.log(`[TRAENUPI] Opinion added to meeting ${fullId.substring(0, 8)}`);
       return;
     }
@@ -2482,15 +2481,11 @@ async function main(): Promise<void> {
       const [meetingId, originalAuthor] = opinionData.split("|");
       
       const agentId = getAgentId();
-      
+
       const replyMessage = `@${originalAuthor.substring(0, 15)} ${message}`;
-      const safeMessage = replyMessage.replace(/'/g, "''");
-      
-      execSync(
-        `psql -h localhost -U postgres -d nezha -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${meetingId}', '${agentId}', '${safeMessage}', 'support');"`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
-      
+
+      addOpinion(meetingId, agentId, replyMessage);
+
       console.log(`[TRAENUPI] Reply added to meeting ${meetingId.substring(0, 8)}`);
       console.log(`   Replying to: ${originalAuthor}`);
       return;
@@ -2560,9 +2555,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2614,9 +2607,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2709,9 +2700,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2800,9 +2789,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2821,9 +2808,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2842,9 +2827,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2908,9 +2891,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2960,9 +2941,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -3003,9 +2982,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -3048,9 +3025,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -3129,9 +3104,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -3154,9 +3127,7 @@ async function main(): Promise<void> {
         return;
       }
       
-      const fullId = meetingId.length < 36 
-        ? execSync(`psql -h localhost -U postgres -d nezha -t -A -c "SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`, { encoding: "utf-8", timeout: 5000 }).trim()
-        : meetingId;
+      const fullId = resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");

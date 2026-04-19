@@ -98,6 +98,9 @@ COMMANDS:
   bookmark add <id> [note]  Bookmark latest opinion
   hooks [type]            Just-in-time learning for AI agents
                           Types: startup, error, remind, commit, all
+  tables [name]           Show database table documentation
+                          Without name: list all tables
+                          With name: show detailed info
 
 MEETING COMMANDS:
   meeting                 List active meetings
@@ -2465,6 +2468,100 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log(`Unknown hook type: ${hookType}`);
       console.log("Available types: startup, error, remind, commit, all");
     }
+    return;
+  }
+  
+  if (command === "tables") {
+    const tableName = args[1];
+    
+    if (!tableName) {
+      console.log("╔════════════════════════════════════════════╗");
+      console.log("║     Database Tables Documentation          ║");
+      console.log("╚════════════════════════════════════════════╝\n");
+      
+      const output = psqlQuery("SELECT table_name, purpose FROM table_documentation ORDER BY table_name;");
+      if (output) {
+        const lines = output.split("\n");
+        for (const line of lines) {
+          const parts = line.split("|");
+          const name = parts[0] || "";
+          const purpose = parts[1] || "";
+          if (name && purpose) {
+            console.log(`  📋 ${name}`);
+            console.log(`     ${purpose.substring(0, 60)}${purpose.length > 60 ? "..." : ""}`);
+          }
+        }
+      }
+      console.log("\n──────────────────────────────────────────────────");
+      console.log("Use 'traenupi tables <name>' for detailed info");
+      return;
+    }
+    
+    const output = psqlQuery(`SELECT table_name, purpose, usage_context, key_columns, cli_commands, example_queries FROM table_documentation WHERE table_name = '${tableName}';`);
+    
+    if (!output || !output.trim()) {
+      console.log(`[TRAENUPI] Table '${tableName}' not found in documentation.`);
+      console.log("Use 'traenupi tables' to list all documented tables.");
+      return;
+    }
+    
+    const parts = output.split("|");
+    const name = parts[0] || "";
+    const purpose = parts[1] || "";
+    const usageContext = parts[2] || "";
+    const keyColumns = parts[3] || "";
+    const cliCommands = parts[4] || "";
+    const exampleQueries = parts[5] || "";
+    
+    console.log("╔════════════════════════════════════════════╗");
+    console.log(`║     Table: ${name.padEnd(30)}║`);
+    console.log("╚════════════════════════════════════════════╝\n");
+    
+    console.log(`📋 Purpose: ${purpose}`);
+    
+    if (usageContext) {
+      console.log(`\n📝 Usage Context:\n${usageContext}`);
+    }
+    
+    if (keyColumns && keyColumns !== "{}") {
+      console.log(`\n🔑 Key Columns:`);
+      try {
+        const cols = JSON.parse(keyColumns);
+        for (const [col, desc] of Object.entries(cols)) {
+          console.log(`   ${col}: ${desc}`);
+        }
+      } catch {
+        console.log(`   ${keyColumns}`);
+      }
+    }
+    
+    if (cliCommands && cliCommands !== "[]") {
+      console.log(`\n💻 CLI Commands:`);
+      try {
+        const cmds = JSON.parse(cliCommands);
+        for (const cmd of cmds) {
+          console.log(`   ${cmd.cmd}`);
+          console.log(`     → ${cmd.desc}`);
+        }
+      } catch {
+        console.log(`   ${cliCommands}`);
+      }
+    }
+    
+    if (exampleQueries && exampleQueries !== "[]") {
+      console.log(`\n📊 Example Queries:`);
+      try {
+        const queries = JSON.parse(exampleQueries);
+        for (const q of queries) {
+          console.log(`   ${q.desc}:`);
+          console.log(`   ${q.query}`);
+        }
+      } catch {
+        console.log(`   ${exampleQueries}`);
+      }
+    }
+    
+    console.log("\n──────────────────────────────────────────────────");
     return;
   }
   

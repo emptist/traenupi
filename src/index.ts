@@ -2238,23 +2238,17 @@ async function main(): Promise<void> {
     
     // Knowledge count
     try {
-      const knowledgeCount = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM memory WHERE source = 'traenupi';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
-      console.log(`📚 Knowledge: ${knowledgeCount} entries`);
+      const knowledgeCount = psqlQuery("SELECT COUNT(*) FROM memory WHERE source = 'traenupi';");
+      console.log(`📚 Knowledge: ${knowledgeCount.trim() || "0"} entries`);
     } catch {
       console.log("📚 Knowledge: N/A");
     }
     
     // Meeting stats
     try {
-      const meetingStats = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(DISTINCT meeting_id), COUNT(*) FROM meeting_opinions;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const meetingStats = psqlQuery("SELECT COUNT(DISTINCT meeting_id), COUNT(*) FROM meeting_opinions;");
       const [meetings, opinions] = meetingStats.split("|");
-      console.log(`💬 Meetings: ${meetings} active, ${opinions} opinions`);
+      console.log(`💬 Meetings: ${meetings.trim()} active, ${opinions.trim()} opinions`);
     } catch {
       console.log("💬 Meetings: N/A");
     }
@@ -2273,8 +2267,9 @@ async function main(): Promise<void> {
     
     // Nezha tasks
     try {
-      const tasks = execSync("nezha tasks 2>/dev/null | grep -c '│'", { encoding: "utf-8", timeout: 5000 });
-      console.log(`📋 Nezha: ${tasks.trim()} pending tasks`);
+      const tasks = psqlQuery("SELECT COUNT(*) FROM tasks WHERE status IN ('PENDING', 'RUNNING', 'PAUSED');");
+      const taskCount = tasks.trim() || "0";
+      console.log(`📋 Nezha: ${taskCount} pending tasks`);
     } catch {
       console.log("📋 Nezha: N/A");
     }

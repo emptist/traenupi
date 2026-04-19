@@ -818,8 +818,8 @@ function savePresenceLocal(presence: AIPresence[]): void {
 
 function getOnlineAIs(): AIPresence[] {
   const presence = loadPresence();
-  const fiveMinutes = 5 * 60 * 1000;
-  return presence.filter(p => Date.now() - p.lastSeen < fiveMinutes);
+  const tenMinutes = 10 * 60 * 1000;
+  return presence.filter(p => Date.now() - p.lastSeen < tenMinutes);
 }
 
 function showPresence(): void {

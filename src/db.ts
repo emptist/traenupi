@@ -9,7 +9,8 @@ export interface DbQueryOptions {
 
 export function psqlQuery(sql: string, options?: DbQueryOptions): string {
   try {
-    const cmd = `${PSQL} -t -A -c ${sql}`;
+    const escapedSql = sql.replace(/'/g, "'\"'\"'");
+    const cmd = `${PSQL} -t -A -c '${escapedSql}'`;
     return execSync(cmd, {
       encoding: "utf-8",
       timeout: options?.timeout ?? 5000,
@@ -43,7 +44,8 @@ export function getAgentId(): string {
       encoding: "utf-8",
       timeout: 5000,
     }).trim();
-    return result || `S-TRAE-traenupi-${Date.now().toString(36)}`;
+    const lines = result.split("\n").filter(l => l.trim() && !l.includes("[INFO]") && !l.includes("[WARN]") && !l.includes("[ERROR]"));
+    return lines[lines.length - 1]?.trim() || `S-TRAE-traenupi-${Date.now().toString(36)}`;
   } catch {
     return `S-TRAE-traenupi-${Date.now().toString(36)}`;
   }
@@ -52,7 +54,7 @@ export function getAgentId(): string {
 export function resolveMeetingId(meetingId: string): string | null {
   if (meetingId.length >= 36) return meetingId;
   try {
-    const result = psqlQuery(`"SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`);
+    const result = psqlQuery(`SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';`);
     return result || null;
   } catch {
     return null;

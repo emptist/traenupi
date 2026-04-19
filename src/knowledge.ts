@@ -15,7 +15,7 @@ export interface KnowledgeEntry {
 
 export function loadKnowledge(): KnowledgeEntry[] {
   try {
-    const output = psqlQuery(`"SELECT content, source, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 50;"`);
+    const output = psqlQuery(`SELECT content, source, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 50;`);
     if (!output) return [];
 
     return output.split("\n").map(line => {
@@ -66,7 +66,7 @@ export function addKnowledge(key: string, value: string, category: string): void
 
 export function getKnowledgeByCategory(category: string): KnowledgeEntry[] {
   try {
-    const output = psqlQuery(`"SELECT content FROM memory WHERE source = 'traenupi' AND '${category}' = ANY(tags) ORDER BY created_at DESC LIMIT 20;"`);
+    const output = psqlQuery(`SELECT content FROM memory WHERE source = 'traenupi' AND '${category}' = ANY(tags) ORDER BY created_at DESC LIMIT 20;`);
     if (!output.trim()) return [];
     
     return output.trim().split("\n").map(line => {

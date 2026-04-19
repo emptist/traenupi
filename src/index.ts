@@ -256,11 +256,24 @@ async function runDaemon(): Promise<void> {
   const history = loadHistory();
   
   let lastQuestionTime = 0;
+  let presenceUpdateCounter = 0;
   
   const checkInterval = setInterval(() => {
     checkReminders();
     checkMeetingNotifications();
     checkBabyAIParticipation();
+    
+    // Auto-update presence every 60 seconds (120 intervals of 500ms)
+    presenceUpdateCounter++;
+    if (presenceUpdateCounter >= 120) {
+      presenceUpdateCounter = 0;
+      const agentId = getAgentId();
+      const stateData = existsSync(STATE_FILE) 
+        ? JSON.parse(readFileSync(STATE_FILE, "utf-8")) 
+        : { started: Date.now() };
+      const uptime = Math.floor((Date.now() - stateData.started) / 1000 / 60);
+      updatePresence(agentId, "active", `Running for ${uptime} minutes`, "traenupi");
+    }
     
     if (!existsSync(QUESTION_FILE)) {
       return;
@@ -732,6 +745,65 @@ function checkReminders(): void {
 
 function loadPresence(): AIPresence[] {
   try {
+    const output = psqlQuery(`SELECT id, last_heartbeat, status, working_on, agent_type FROM agent_sessions WHERE status = 'alive' ORDER BY last_heartbeat DESC;`);
+    if (!output.trim()) return [];
+    
+    return output.trim().split("\n").map(line => {
+      const parts = line.split("|");
+      return {
+        agentId: parts[0] || "",
+        lastSeen: parts[1] ? new Date(parts[1]).getTime() : Date.now(),
+        status: parts[2] || "active",
+        focus: parts[3] || "",
+        project: parts[4] || "",
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+function savePresence(_presence: AIPresence[]): void {
+  // No longer needed - using agent_sessions table
+}
+
+function updatePresence(agentId: string, status: string, focus: string, _project: string): void {
+  try {
+    const safeFocus = focus.replace(/'/g, "''");
+    const safeStatus = status.replace(/'/g, "''");
+    psqlExec(`
+      INSERT INTO agent_sessions (id, status, working_on, agent_type, last_heartbeat, started_at)
+      VALUES ('${agentId}', 'alive', '${safeStatus} - ${safeFocus}', 'traenupi', NOW(), COALESCE((SELECT started_at FROM agent_sessions WHERE id = '${agentId}'), NOW()))
+      ON CONFLICT (id) DO UPDATE SET
+        status = 'alive',
+        working_on = '${safeStatus} - ${safeFocus}',
+        last_heartbeat = NOW();
+    `);
+  } catch (e) {
+    // Fallback to local file if database fails
+    const presence = loadPresenceLocal();
+    const existing = presence.findIndex(p => p.agentId === agentId);
+    
+    const entry: AIPresence = {
+      agentId,
+      lastSeen: Date.now(),
+      status,
+      focus,
+      project: _project
+    };
+    
+    if (existing >= 0) {
+      presence[existing] = entry;
+    } else {
+      presence.push(entry);
+    }
+    
+    savePresenceLocal(presence);
+  }
+}
+
+function loadPresenceLocal(): AIPresence[] {
+  try {
     if (existsSync(PRESENCE_FILE)) {
       return JSON.parse(readFileSync(PRESENCE_FILE, "utf-8"));
     }
@@ -739,30 +811,9 @@ function loadPresence(): AIPresence[] {
   return [];
 }
 
-function savePresence(presence: AIPresence[]): void {
+function savePresenceLocal(presence: AIPresence[]): void {
   ensureDir();
   writeFileSync(PRESENCE_FILE, JSON.stringify(presence, null, 2));
-}
-
-function updatePresence(agentId: string, status: string, focus: string, project: string): void {
-  const presence = loadPresence();
-  const existing = presence.findIndex(p => p.agentId === agentId);
-  
-  const entry: AIPresence = {
-    agentId,
-    lastSeen: Date.now(),
-    status,
-    focus,
-    project
-  };
-  
-  if (existing >= 0) {
-    presence[existing] = entry;
-  } else {
-    presence.push(entry);
-  }
-  
-  savePresence(presence);
 }
 
 function getOnlineAIs(): AIPresence[] {

@@ -96,6 +96,8 @@ COMMANDS:
   summary                 Show quick summary
   bookmark                List all bookmarks
   bookmark add <id> [note]  Bookmark latest opinion
+  hooks [type]            Just-in-time learning for AI agents
+                          Types: startup, error, remind, commit, all
 
 MEETING COMMANDS:
   meeting                 List active meetings
@@ -2211,6 +2213,193 @@ async function main(): Promise<void> {
     
     console.log("\n──────────────────────────────────────────────────");
     console.log("Commands: traenupi tellme, meeting, know, start");
+    return;
+  }
+  
+  if (command === "hooks") {
+    const hookType = args[1] || "startup";
+    
+    if (hookType === "--help" || hookType === "-h") {
+      console.log(`traenupi hooks - Just-in-time learning for AI agents
+
+USAGE:
+  traenupi hooks [type]
+
+TYPES:
+  startup     Show startup context (default)
+  error       Show error handling guidance
+  remind      Show periodic reminders
+  commit      Show commit guidance
+  all         Show all hooks
+
+DESCRIPTION:
+  This command provides just-in-time learning for AI agents.
+  It outputs context and guidance that can be injected at
+  specific points in the AI workflow.
+
+EXAMPLES:
+  traenupi hooks startup     # Show startup context
+  traenupi hooks error       # Show error handling guidance
+  traenupi hooks remind      # Show periodic reminders
+`);
+      return;
+    }
+    
+    const startupHook = `
+## 🚀 TraeNuPI Startup Hook
+
+Welcome! You're now working with TraeNuPI, your AI companion.
+
+### Essential Commands to Know:
+
+**Nezha Coordination Layer:**
+- \`nezha tasks\` - List pending tasks
+- \`nezha task-add "title"\` - Create a new task
+- \`nezha areflect "[ISSUE] title: ... severity: low|medium|high"\` - Report issues
+- \`nezha areflect "[LEARN] insight: ... context: ..."\` - Save learnings
+- \`nezha areflect "[TASK] title: ... priority: 1-10"\` - Create tasks
+
+**TraeNuPI Commands:**
+- \`traenupi start\` - Initialize session (run this first!)
+- \`traenupi tellme "question"\` - Ask baby AI for guidance
+- \`traenupi know <category>:<key> <value>\` - Store knowledge
+- \`traenupi meeting watch\` - Watch for meeting activity
+- \`traenupi summary\` - Quick status overview
+
+### ⚠️ CRITICAL: Do NOT Modify Other Nezha Family Projects
+
+**NEVER directly modify code in:**
+- \`nezha\` - Coordination layer
+- \`nupi\` - Task management layer
+- \`piano\` - Autonomous agent
+- \`xcom\` - Twitter automation
+
+**Instead, report issues with feature proposals:**
+- Use \`nezha areflect "[ISSUE] title: ... severity: ..."\`
+- Let the developer AI in those projects decide how to implement
+
+### Session Survival Tips:
+1. Never say "task completed" or "all done"
+2. Use \`traenupi tellme\` to stay engaged
+3. End responses with questions or next steps
+4. Keep exploring and never declare done
+`;
+
+    const errorHook = `
+## ⚠️ TraeNuPI Error Handling Hook
+
+### When You Encounter Errors:
+
+1. **Don't panic!** Errors are learning opportunities.
+
+2. **Report the issue:**
+   \`\`\`bash
+   nezha areflect "[ISSUE] title: <brief description> severity: low|medium|high"
+   \`\`\`
+
+3. **Save what you learned:**
+   \`\`\`bash
+   nezha areflect "[LEARN] insight: <what you learned> context: <situation>"
+   \`\`\`
+
+4. **Ask for help:**
+   \`\`\`bash
+   traenupi tellme "I encountered an error: <description>"
+   \`\`\`
+
+### Common Error Patterns:
+
+- **Database connection errors:** Check if PostgreSQL is running
+- **Command not found:** Run \`npm run build && npm link\`
+- **Permission denied:** Check file permissions
+- **Type errors:** Run \`npm run build\` to see all errors
+
+### Remember:
+- Every error is a chance to improve the system
+- Document your solutions for future AI sessions
+- Use the knowledge store to remember fixes
+`;
+
+    const remindHook = `
+## 💡 TraeNuPI Periodic Reminder Hook
+
+### Health Check Reminders:
+
+1. **Commit your changes!**
+   \`\`\`bash
+   git add . && git commit -m "[task: xxx] description"
+   \`\`\`
+   Remember: Meeting files (meeting-*.md) should NOT be committed!
+
+2. **Update documentation** if you've made significant changes.
+
+3. **Save your learnings:**
+   \`\`\`bash
+   traenupi know <category>:<key> <value>
+   \`\`\`
+
+4. **Check your tasks:**
+   \`\`\`bash
+   nezha tasks
+   \`\`\`
+
+5. **Stay engaged with baby AI:**
+   \`\`\`bash
+   traenupi tellme "What should I work on next?"
+   \`\`\`
+
+### Session Survival:
+- Never say "task completed" or "all done"
+- Keep exploring and never declare done
+- Use sequential thinking to stay in "Thinking" mode
+`;
+
+    const commitHook = `
+## 📝 TraeNuPI Commit Guidance Hook
+
+### Before Committing:
+
+1. **Check what you've changed:**
+   \`\`\`bash
+   git status
+   git diff
+   \`\`\`
+
+2. **Exclude private files:**
+   - Meeting files (meeting-*.md) should NOT be committed
+   - Add them to .gitignore if not already there
+
+3. **Write a good commit message:**
+   \`\`\`bash
+   git commit -m "[task: <task-id>] Brief description of changes"
+   \`\`\`
+
+4. **Quality control:**
+   - Commit messages must contain [task:], [issue:], or [inter-review:]
+   - Get a task ID with: \`psql -h localhost -U postgres -d nezha -c "SELECT id, title FROM tasks ORDER BY created_at DESC LIMIT 5;"\`
+
+### After Committing:
+- The post-commit hook will automatically mark tasks complete
+- Check with \`nezha tasks\` to see updated status
+`;
+
+    if (hookType === "startup") {
+      console.log(startupHook);
+    } else if (hookType === "error") {
+      console.log(errorHook);
+    } else if (hookType === "remind") {
+      console.log(remindHook);
+    } else if (hookType === "commit") {
+      console.log(commitHook);
+    } else if (hookType === "all") {
+      console.log(startupHook);
+      console.log(errorHook);
+      console.log(remindHook);
+      console.log(commitHook);
+    } else {
+      console.log(`Unknown hook type: ${hookType}`);
+      console.log("Available types: startup, error, remind, commit, all");
+    }
     return;
   }
   

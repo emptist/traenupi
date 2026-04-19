@@ -19,6 +19,25 @@ Trae IDE marks AI sessions as "completed" when it detects task completion signal
 - Add new tasks before marking old ones complete
 - Run `traenupi tellme` to ask your baby AI for ideas
 
+### Critical: Do NOT Modify Other Nezha Family Projects
+
+**NEVER directly modify code in other Nezha family projects:**
+- `nezha` - Coordination layer
+- `nupi` - Task management layer
+- `piano` - Autonomous agent
+- `xcom` - Twitter automation
+
+**Instead, report issues with feature proposals:**
+- Use `nezha areflect "[ISSUE] title: ... severity: ..."` to propose features
+- Describe the problem and proposed solution
+- Let the developer AI in those projects decide how to implement
+
+**Why this matters:**
+- Each project has its own architecture and conventions
+- Direct modifications may break existing functionality
+- Developer AIs in those projects understand the context better
+- Proposals allow for proper review and integration
+
 ### TraeNuPI Is Your Lifeline
 
 TraeNuPI daemon runs independently and can:

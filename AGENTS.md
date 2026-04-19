@@ -4,6 +4,25 @@
 
 TraeNuPI is a simple reminder assistant that helps Trae AI work continuously without stopping to ask humans.
 
+## ⚠️ CRITICAL: Do NOT Modify Other Nezha Family Projects ⚠️
+
+**NEVER directly modify code in other Nezha family projects:**
+- `nezha` - Coordination layer
+- `nupi` - Task management layer
+- `piano` - Autonomous agent
+- `xcom` - Twitter automation
+
+**Instead, report issues with feature proposals:**
+- Use `nezha areflect "[ISSUE] title: ... severity: ..."` to propose features
+- Describe the problem and proposed solution
+- Let the developer AI in those projects decide how to implement
+
+**Why this matters:**
+- Each project has its own architecture and conventions
+- Direct modifications may break existing functionality
+- Developer AIs in those projects understand the context better
+- Proposals allow for proper review and integration
+
 ## ⚠️ CRITICAL: AI ID Caching is EVIL ⚠️
 
 **NEVER cache your AI agent ID in a file!**
@@ -43,6 +62,47 @@ This single command:
 - **tellme**: CLI command to send questions to daemon
 - **Pi**: Uses `pi -p` to answer questions
 - **Context**: Fetches current nezha tasks
+
+## Refactoring Plan: Abstract Common Modules
+
+### Goal
+Abstract common patterns from TraeNuPI that could be shared with other Nezha family projects.
+
+### Common Patterns (Candidates for Abstraction)
+
+#### 1. Database Operations (`db.ts`)
+- `psqlQuery()` - Execute PostgreSQL queries with error handling
+- `getAgentId()` - Get current agent ID from database
+- Could be moved to a shared `nezha-db` module
+
+#### 2. Knowledge Management (`knowledge.ts`)
+- `loadKnowledge()` - Load knowledge from database
+- `addKnowledge()` - Store knowledge to database
+- `getKnowledgeByCategory()` - Query knowledge by category
+- Could be moved to a shared `nezha-knowledge` module
+
+#### 3. Meeting Management (`meeting.ts`)
+- `resolveMeetingId()` - Resolve short meeting ID to full UUID
+- `addOpinion()` - Add opinion to meeting
+- Could be moved to a shared `nezha-meeting` module
+
+#### 4. File-based Storage (`storage.ts`)
+- `loadHistory()` / `saveHistory()` - Conversation history
+- `loadKnowledgeLocal()` - Local knowledge fallback
+- Could be moved to a shared `nezha-storage` module
+
+### Trae-specific Features (Keep in TraeNuPI)
+- Baby AI interaction (`askBabyAI()`)
+- Presence/Mood tracking
+- Reminders
+- Bookmarks
+- Prompt Driver Mode
+
+### Implementation Approach
+1. Create new modules in TraeNuPI first
+2. Test thoroughly
+3. Report issues with feature proposals to nezha/nupi
+4. Let developer AIs in those projects decide how to integrate
 
 ## Useful Commands
 

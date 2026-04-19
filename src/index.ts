@@ -7,6 +7,26 @@ import { fileURLToPath } from "node:url";
 import { createDriver } from "./driver.js";
 import { createTask, loadTask } from "./task.js";
 import type { DriverConfig } from "./types.js";
+import { psqlQuery, psqlExec, getAgentId, resolveMeetingId } from "./db.js";
+import { loadKnowledge, addKnowledge, getKnowledgeByCategory, loadKnowledgeLocal, type KnowledgeEntry } from "./knowledge.js";
+import { addOpinion, getMeetingOpinions, getMeetingInfo, getActiveMeetings } from "./meeting.js";
+import { 
+  ensureDir, 
+  loadHistory, 
+  saveHistory, 
+  loadReminders, 
+  saveReminders, 
+  loadBookmarks, 
+  saveBookmarks,
+  loadMoodHistory,
+  saveMoodHistory,
+  loadJsonFile,
+  saveJsonFile,
+  type ConversationItem,
+  type Reminder,
+  type Bookmark,
+  type MoodEntry
+} from "./storage.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
@@ -32,190 +52,7 @@ interface AIPresence {
   project: string;
 }
 
-interface AIMoodEntry {
-  agentId: string;
-  mood: string;
-  timestamp: number;
-  context: string;
-}
-
-interface Bookmark {
-  id: string;
-  meetingId: string;
-  opinionId: string;
-  author: string;
-  perspective: string;
-  note: string;
-  createdAt: number;
-}
-
-interface Reminder {
-  id: string;
-  message: string;
-  triggerAt: number;
-  triggered: boolean;
-}
-
-interface ConversationItem {
-  question: string;
-  answer: string;
-  time: number;
-}
-
-interface KnowledgeEntry {
-  key: string;
-  value: string;
-  category: string;
-  time: number;
-}
-
-function loadHistory(): ConversationItem[] {
-  try {
-    if (existsSync(HISTORY_FILE)) {
-      return JSON.parse(readFileSync(HISTORY_FILE, "utf-8"));
-    }
-  } catch {}
-  return [];
-}
-
-function saveHistory(history: ConversationItem[]): void {
-  const recent = history.slice(-10);
-  writeFileSync(HISTORY_FILE, JSON.stringify(recent, null, 2));
-}
-
 const PSQL = "psql -h localhost -U postgres -d nezha";
-
-function psqlQuery(sql: string, options?: { timeout?: number; silent?: boolean }): string {
-  try {
-    const cmd = `${PSQL} -t -A -c ${sql}`;
-    return execSync(cmd, {
-      encoding: "utf-8",
-      timeout: options?.timeout ?? 5000,
-    }).trim();
-  } catch (e) {
-    if (!options?.silent) {
-      console.error(`[PSQL Error] ${e instanceof Error ? e.message : String(e)}`);
-    }
-    return "";
-  }
-}
-
-function getAgentId(): string {
-  try {
-    const result = execSync("nezha agents id", {
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-    return result || `S-TRAE-traenupi-${Date.now().toString(36)}`;
-  } catch {
-    return `S-TRAE-traenupi-${Date.now().toString(36)}`;
-  }
-}
-
-function resolveMeetingId(meetingId: string): string | null {
-  if (meetingId.length >= 36) return meetingId;
-  try {
-    const result = psqlQuery(`"SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';"`);
-    return result || null;
-  } catch {
-    return null;
-  }
-}
-
-function addOpinion(meetingId: string, author: string, message: string): boolean {
-  const safeMessage = message.replace(/'/g, "''");
-  try {
-    execSync(
-      `${PSQL} -c "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${meetingId}', '${author}', '${safeMessage}', 'support');"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function loadKnowledge(): KnowledgeEntry[] {
-  try {
-    const output = psqlQuery(`"SELECT content, source, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 50;"`);
-    if (!output) return [];
-
-    return output.split("\n").map(line => {
-      const parts = line.split("|");
-      const content = parts[0] || "";
-      const category = parts[1] || "general";
-      const tagsStr = parts[2] || "";
-      const keyMatch = content.match(/^(\w[\w-]*):/);
-      return {
-        key: keyMatch ? keyMatch[1] : content.substring(0, 20),
-        value: keyMatch ? content.substring(keyMatch[1].length + 1).trim() : content,
-        category: category || "general",
-        time: Date.now(),
-      };
-    });
-  } catch {
-    return loadKnowledgeLocal();
-  }
-}
-
-function loadKnowledgeLocal(): KnowledgeEntry[] {
-  try {
-    if (existsSync(KNOWLEDGE_FILE)) {
-      return JSON.parse(readFileSync(KNOWLEDGE_FILE, "utf-8"));
-    }
-  } catch {}
-  return [];
-}
-
-function addKnowledge(key: string, value: string, category: string): void {
-  const content = `${key}: ${value}`;
-  const tags = `{traenupi,${category}}`;
-  
-  try {
-    execSync(
-      `${PSQL} -c "INSERT INTO memory (content, source, tags) VALUES ('${content.replace(/'/g, "''")}', 'traenupi', '${tags}');"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
-  } catch {
-    const knowledge = loadKnowledgeLocal();
-    const existing = knowledge.findIndex(k => k.key === key && k.category === category);
-    if (existing >= 0) {
-      knowledge[existing].value = value;
-      knowledge[existing].time = Date.now();
-    } else {
-      knowledge.push({ key, value, category, time: Date.now() });
-    }
-    writeFileSync(KNOWLEDGE_FILE, JSON.stringify(knowledge, null, 2));
-  }
-}
-
-function getKnowledgeByCategory(category: string): KnowledgeEntry[] {
-  try {
-    const output = execSync(
-      `${PSQL} -c "SELECT content FROM memory WHERE source = 'traenupi' AND '${category}' = ANY(tags) ORDER BY created_at DESC LIMIT 20;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
-    if (!output.trim()) return [];
-    
-    return output.trim().split("\n").map(line => {
-      const keyMatch = line.match(/^(\w[\w-]*):/);
-      return {
-        key: keyMatch ? keyMatch[1] : line.substring(0, 20),
-        value: keyMatch ? line.substring(keyMatch[1].length + 1).trim() : line,
-        category,
-        time: Date.now(),
-      };
-    });
-  } catch {
-    return loadKnowledgeLocal().filter(k => k.category === category);
-  }
-}
-
-function ensureDir(): void {
-  if (!existsSync(TRAENUPI_DIR)) {
-    mkdirSync(TRAENUPI_DIR, { recursive: true });
-  }
-}
 
 function printUsage(): void {
   console.log(`
@@ -817,20 +654,6 @@ function tellmeDaemon(question: string): void {
   console.log("[TRAENUPI] Check the daemon terminal for the answer.");
 }
 
-function loadReminders(): Reminder[] {
-  try {
-    if (existsSync(REMINDERS_FILE)) {
-      return JSON.parse(readFileSync(REMINDERS_FILE, "utf-8"));
-    }
-  } catch {}
-  return [];
-}
-
-function saveReminders(reminders: Reminder[]): void {
-  ensureDir();
-  writeFileSync(REMINDERS_FILE, JSON.stringify(reminders, null, 2));
-}
-
 function addReminder(minutes: number, message: string): void {
   const id = `rem_${Date.now().toString(36)}`;
   const triggerAt = Date.now() + minutes * 60 * 1000;
@@ -1031,20 +854,6 @@ function showActivityHeatmap(): void {
   console.log("──────────────────────────────────────────────────");
 }
 
-function loadMoodHistory(): AIMoodEntry[] {
-  try {
-    if (existsSync(MOOD_FILE)) {
-      return JSON.parse(readFileSync(MOOD_FILE, "utf-8"));
-    }
-  } catch {}
-  return [];
-}
-
-function saveMoodHistory(moods: AIMoodEntry[]): void {
-  ensureDir();
-  writeFileSync(MOOD_FILE, JSON.stringify(moods, null, 2));
-}
-
 function recordMood(agentId: string, mood: string, context: string): void {
   const moods = loadMoodHistory();
   moods.push({
@@ -1080,7 +889,7 @@ function showMoodHistory(): void {
   
   console.log(`📊 Last 24 hours: ${recent.length} mood entries\n`);
   
-  const byAgent: { [key: string]: AIMoodEntry[] } = {};
+  const byAgent: { [key: string]: MoodEntry[] } = {};
   for (const m of recent) {
     if (!byAgent[m.agentId]) byAgent[m.agentId] = [];
     byAgent[m.agentId].push(m);
@@ -1253,20 +1062,6 @@ function showCollaboration(): void {
   console.log(`💬 Total Opinions: ${totalOpinions}`);
   console.log(`🤖 Unique AIs: ${uniqueAuthors}`);
   console.log("──────────────────────────────────────────────────");
-}
-
-function loadBookmarks(): Bookmark[] {
-  try {
-    if (existsSync(BOOKMARKS_FILE)) {
-      return JSON.parse(readFileSync(BOOKMARKS_FILE, "utf-8"));
-    }
-  } catch {}
-  return [];
-}
-
-function saveBookmarks(bookmarks: Bookmark[]): void {
-  ensureDir();
-  writeFileSync(BOOKMARKS_FILE, JSON.stringify(bookmarks, null, 2));
 }
 
 function crossMeetingSearch(term: string): void {

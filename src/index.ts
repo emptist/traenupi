@@ -2027,10 +2027,7 @@ async function main(): Promise<void> {
       const limit = parseInt(rest[1], 10) || 10;
       
       try {
-        const output = execSync(
-          `${PSQL} -c "SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT ${limit};"`,
-          { encoding: "utf-8", timeout: 5000 }
-        );
+        const output = psqlQuery(`SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT ${limit};`);
         if (output.trim()) {
           console.log(`[TRAENUPI] Knowledge: [--recent ${limit}]\n`);
           for (const line of output.trim().split("\n")) {

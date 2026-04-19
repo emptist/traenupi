@@ -1089,8 +1089,25 @@ function showCollaboration(): void {
   console.log("🤝 Top Collaborating AIs:\n");
   
   for (const [pair, data] of sorted) {
-    const shortPair = pair.replace(/S-TRAE-/g, "").replace(/-/g, "").substring(0, 30);
-    console.log(`   ${shortPair}`);
+    const parts = pair.split(" ↔ ");
+    const displayParts = parts.map(p => {
+      const trimmed = p.trim();
+      if (trimmed.includes("[INFO]") || trimmed.includes("[WARN]") || trimmed.includes("[ERROR]")) {
+        const match = trimmed.match(/S-[A-Z]+-[a-z_]+-[0-9T]+/);
+        if (match) return match[0].replace("S-TRAE-", "trae-").replace("S-nezha-", "nezha-");
+        const botMatch = trimmed.match(/bot_[a-f0-9]+/);
+        if (botMatch) return "bot-" + botMatch[0].substring(4, 12);
+        return "unknown";
+      }
+      if (trimmed.startsWith("S-TRAE-traenupi-")) return "traenupi";
+      if (trimmed.startsWith("S-TRAE-")) return trimmed.replace("S-TRAE-", "trae-");
+      if (trimmed.startsWith("S-nezha-")) return trimmed.replace("S-nezha-", "nezha-");
+      if (trimmed.startsWith("bot_")) return "bot-" + trimmed.substring(4, 12);
+      if (trimmed.startsWith("baby-ai-")) return "baby-ai";
+      return trimmed.substring(0, 25);
+    });
+    const displayPair = displayParts.join(" ↔ ");
+    console.log(`   ${displayPair}`);
     console.log(`   Meetings together: ${data.count}`);
     console.log("");
   }

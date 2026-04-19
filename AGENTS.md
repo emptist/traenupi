@@ -50,6 +50,12 @@ This single command:
 - `nezha tasks` : see pending tasks
 - `nezha task-add "title" "desc" 5` : create task
 - `nezha improve` : create review task
+- `nezha issue-add "title"` : create an issue
+- `nezha areflect "[MARKER] message"` : all-in-one reflection with markers:
+  - `[LEARN] insight: <content> context: <context>` : save a learning
+  - `[TASK] title: <title> priority: <1-10>` : create a task
+  - `[ISSUE] title: <title> severity: <low/medium/high/critical>` : report issue
+  - Example: `nezha areflect "[ISSUE] title: Bug found severity: high [LEARN] insight: Always check null"`
 
 ### TraeNuPI Commands
 - `traenupi start` : initialize session (run this first!)

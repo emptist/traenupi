@@ -5,3 +5,4 @@ dist/
 .DS_Store
 deprecated/
 __tmp_test__/
+meeting-*.md

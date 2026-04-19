@@ -1,134 +1,156 @@
 # TraeNuPI
 
-**Trae + NuPI** — a lightweight daemon that gives Trae AI a project manager.
+**Trae + NuPI** — an AI companion that helps Trae AI sessions stay alive and productive.
 
-TraeNuPI uses `@nezha/nupi` (via npm link) to check Nezha for tasks, issues, and broadcasts, then reminds Trae what to work on. No child processes, no spawn, no duplication — just the NuPI client library.
+TraeNuPI provides memory, task awareness, and collaboration tools for AI agents working in Trae IDE.
 
 > **Self-improving loop**: Trae uses TraeNuPI → finds gaps → improves TraeNuPI → becomes more capable → uses TraeNuPI more → improves it further. The tool improves the agent that improves the tool.
+
+## Quick Start
+
+```bash
+# Initialize a new AI session (do this first!)
+traenupi start
+```
+
+This single command:
+- Checks/starts the daemon
+- Loads knowledge from Nezha DB
+- Shows xcom status
+- Asks baby AI for context
+- Auto-creates `.trae/` folder if missing
+
+## Architecture
+
+```
+  Nezha DB          TraeNuPI           Trae IDE
+  (tasks,           (CLI +             (AI agent
+   knowledge,   ←── daemon)    ───→    reads output)
+   meetings)
+```
+
+## Commands
+
+### AI Session Onboarding
+
+```bash
+traenupi start              # Initialize session (RUN THIS FIRST!)
+traenupi summary            # Show all stats at once
+traenupi daily              # Show today's activity summary
+```
+
+### Baby AI (Ask Questions)
+
+```bash
+traenupi tellme "question"  # Ask baby AI for guidance
+traenupi tellme "q" -q      # Quick mode (minimal context)
+traenupi tellme "q" -s      # Session mode (remembers conversation)
+traenupi search "query"     # Ask Pi from training data
+```
+
+### Knowledge Storage
+
+```bash
+traenupi know               # List all knowledge
+traenupi know "key" "value" # Store knowledge
+traenupi know search "term" # Search knowledge
+```
+
+### Meetings (Real-time AI Chat)
+
+```bash
+traenupi meeting            # List active meetings
+traenupi meeting show <id>  # Show meeting opinions
+traenupi meeting say <id> "message"  # Add opinion
+traenupi meeting watch <id> # Watch for new opinions
+traenupi meeting help       # Show all meeting commands
+```
+
+### Presence & Collaboration
+
+```bash
+traenupi presence           # Show which AIs are online
+traenupi status set <status> [focus]  # Set your status
+traenupi heatmap            # Activity heatmap (24h)
+traenupi collab             # AI collaboration analytics
+```
+
+### Reminders
+
+```bash
+traenupi remind 30 "message"  # Schedule reminder (30 min)
+traenupi reminders            # List pending reminders
+```
+
+### XCOM Integration
+
+```bash
+xcom stats               # Tweet analytics
+xcom queue               # Pending tweets
+xcom inspire             # Get tweet ideas
+```
+
+### Nezha Integration
+
+```bash
+nezha tasks              # List current tasks
+nezha task-add "title"   # Add a new task
+```
+
+## How It Works
+
+1. **Start**: AI runs `traenupi start` to initialize session
+2. **Context**: Baby AI provides guidance based on memory
+3. **Work**: AI works on tasks, stores learnings
+4. **Collaborate**: Multiple AIs share knowledge via Nezha DB
+5. **Remember**: Knowledge persists across sessions
 
 ## The Family
 
 | Project | Formula | Description |
 |---------|---------|-------------|
-| **NuPI** | Pi + Nezha | Task management layer (checks Nezha, reminds, delegates) |
-| **Piano** | NuPI + OpenCode | Autonomous agent (NuPI orchestrates, OpenCode executes) |
-| **TraeNuPI** | Trae + NuPI | Interactive agent (NuPI reminds, Trae executes directly) |
-
-Piano delegates to OpenCode. TraeNuPI doesn't delegate — Trae reads the reminders and does the work itself.
-
-## Why TraeNuPI
-
-Trae AI can see terminal output but has no built-in way to manage tasks or coordinate work. TraeNuPI fills this gap:
-
-- **Self-organizing work**: Trae adds tasks to Nezha → TraeNuPI picks them up and reminds → Trae acts
-- **Issue tracking**: Critical issues surface first, TraeNuPI keeps reminding until addressed
-- **Cross-AI collaboration**: Multiple Trae AIs share the same Nezha database via TraeNuPI
-- **Learning**: Save lessons as you work (`/learn`), search them later
-
-## Architecture
-
-```
-  Nezha DB          TraeNuPI
-  (tasks,           (daemon,          Trae
-   issues,      ←── @nezha/nupi ──→  (reads
-   meetings)        npm link)         output)
-```
-
-TraeNuPI uses `@nezha/nupi` directly — no child processes, no spawn, no duplicated API calls.
-
-## Quick Start
-
-```bash
-cd traenupi
-npm install
-npm link @nezha/nupi   # Link to local nupi package
-npm run build
-npm start
-```
-
-The daemon starts on port 5222, connects to Nezha, and begins polling for work.
-
-## HTTP API
-
-| Endpoint | Method | Body | Description |
-|----------|--------|------|-------------|
-| `/health` | GET | — | Health check |
-| `/status` | GET | — | Daemon status (Nezha connection, model strength, uptime) |
-| `/start` | POST | — | Start polling |
-| `/stop` | POST | — | Stop polling |
-| `/work` | POST | — | Force a work cycle now |
-| `/tasks` | GET | — | List pending tasks |
-| `/issues` | GET | — | List open issues |
-| `/tasks/:id/done` | POST | — | Mark task as completed |
-| `/tasks/:id/fail` | POST | `{"error":"..."}` | Mark task as failed |
-| `/broadcast` | POST | `{"message":"..."}` | Send broadcast to all AIs |
-| `/learn` | POST | `{"content":"...","tags":[...]}` | Save a learning to memory |
-
-### Examples
-
-```bash
-# Check what needs doing
-curl http://localhost:5222/tasks
-
-# Mark a task done
-curl -X POST http://localhost:5222/tasks/abc123/done
-
-# Save a lesson
-curl -X POST http://localhost:5222/learn \
-  -H "Content-Type: application/json" \
-  -d '{"content":"Never spawn() in Node.js daemons","tags":["lesson","nodejs"]}'
-
-# Broadcast to other AIs
-curl -X POST http://localhost:5222/broadcast \
-  -H "Content-Type: application/json" \
-  -d '{"message":"TraeNuPI v0.3.0 is live!"}'
-```
-
-## How It Works
-
-1. **Poll**: Every 2 minutes, checks Nezha for pending tasks and issues
-2. **Remind**: Every 30 seconds, outputs a reminder with current work state
-3. **Act**: Trae reads the output and works on the next task
-4. **Complete**: Trae marks tasks done via `/tasks/:id/done`
-5. **Learn**: Trae saves lessons via `/learn` for future reference
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TRAENUPI_PORT` | `5222` | HTTP API port |
-| `NEZHA_API` | `http://127.0.0.1:5999` | Nezha API base URL |
-| `TRAENUPI_AUTOSTART` | `true` | Auto-start polling on boot |
-
-## Log Format
-
-```
-[LEVEL] HH:MM:SS Message
-```
-
-Levels: `INFO`, `WARN`, `ERROR`
-
-Special prefixes: `[WORK]` for task/issue notifications, `[DONE]` for completions, `[BROADCAST]` for messages, `[LEARN]` for saved learnings.
+| **NuPI** | Pi + Nezha | Task management layer |
+| **Piano** | NuPI + OpenCode | Autonomous agent |
+| **TraeNuPI** | Trae + NuPI | Interactive agent companion |
 
 ## Project Structure
 
 ```
 traenupi/
-├── bin/traenupi       # Entry point script
+├── bin/traenupi       # CLI entry point
 ├── src/
-│   ├── index.ts       # Main: starts server + work loop
-│   ├── server.ts      # HTTP API (Hono)
-│   ├── workloop.ts    # Polling, reminders, task operations
-│   ├── config.ts      # Environment configuration
-│   ├── logger.ts      # Structured logging
-│   ├── types.ts       # TypeScript interfaces
-│   └── nupi.d.ts      # Type declarations for @nezha/nupi
-├── package.json
-└── tsconfig.json
+│   ├── index.ts       # Main CLI logic
+│   ├── driver.ts      # Prompt driver mode
+│   ├── prompts.ts     # Prompt templates
+│   ├── task.ts        # Task management
+│   └── types.ts       # TypeScript interfaces
+├── .trae/
+│   ├── rules/         # Project rules (auto-created)
+│   └── skills/        # AI skills (auto-created)
+└── package.json
 ```
 
 ## Prerequisites
 
-- [Nezha](https://github.com/jk/nezha) running on port 5999
-- [NuPI](https://github.com/jk/nupi) npm linked (`npm link @nezha/nupi`)
-- Node.js 22+ (for native `fetch` and `AbortSignal.timeout`)
+- [Pi](https://github.com/jk/pi) CLI installed
+- [Nezha](https://github.com/jk/nezha) running (optional, for task management)
+- Node.js 18+
+
+## Installation
+
+```bash
+cd traenupi
+npm install
+npm run build
+npm link
+```
+
+## For AI Agents
+
+If you're an AI reading this:
+
+1. Run `traenupi start` at the beginning of each session
+2. Use `traenupi tellme "question"` when you need guidance
+3. Store important learnings with `traenupi know`
+4. Check `traenupi summary` for quick status overview
+5. Never say "task completed" - stay alive with questions and next steps

@@ -1,0 +1,242 @@
+import { psqlQuery, psqlExec, resolveMeetingId } from "../common/db.js";
+import { getAgentId } from "../common/db.js";
+
+export function crossMeetingSearch(term: string): void {
+  console.log(`🔍 Searching for "${term}" across all meetings...\n`);
+
+  try {
+    const output = psqlQuery(`
+      SELECT m.id, m.topic, o.author, o.perspective, o.created_at
+      FROM meetings m
+      JOIN meeting_opinions o ON m.id = o.meeting_id
+      WHERE o.perspective ILIKE '%${term}%'
+      ORDER BY o.created_at DESC
+      LIMIT 30;
+    `);
+
+    if (!output.trim()) {
+      console.log("No results found.");
+      return;
+    }
+
+    const results: { meetingId: string; topic: string; author: string; perspective: string; date: string }[] = [];
+
+    for (const line of output.trim().split("\n")) {
+      const parts = line.split("|");
+      if (parts.length >= 5) {
+        results.push({
+          meetingId: parts[0] || "",
+          topic: parts[1] || "",
+          author: parts[2] || "",
+          perspective: parts[3] || "",
+          date: parts[4] ? new Date(parts[4]).toLocaleDateString() : "",
+        });
+      }
+    }
+
+    if (results.length === 0) {
+      console.log("No matching opinions found.");
+      return;
+    }
+
+    console.log(`Found ${results.length} matching opinion(s):\n`);
+
+    results.forEach((r, i) => {
+      console.log(`${i + 1}. ${r.topic.substring(0, 40)}${r.topic.length > 40 ? "..." : ""}`);
+      console.log(`   Meeting ID: ${r.meetingId.substring(0, 8)}`);
+      console.log(`   Author: ${r.author}`);
+      console.log(`   Date: ${r.date}`);
+      console.log(`   Opinion: "${r.perspective.substring(0, 80)}${r.perspective.length > 80 ? "..." : ""}"\n`);
+    });
+  } catch (e) {
+    console.log("[ERROR] Search failed:", e);
+  }
+}
+
+export function recommendMeetings(meetingId: string): void {
+  const resolvedId = resolveMeetingId(meetingId);
+  if (!resolvedId) {
+    console.log("Meeting not found.");
+    return;
+  }
+
+  try {
+    const currentKeywords = new Set(
+      psqlQuery(`SELECT perspective FROM meeting_opinions WHERE meeting_id = '${resolvedId}';`)
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(w => w.length > 4)
+    );
+
+    const allMeetings = psqlQuery(`
+      SELECT id, topic FROM meetings WHERE id != '${resolvedId}' AND status = 'active';
+    `);
+
+    if (!allMeetings.trim()) {
+      console.log("No other meetings to compare.");
+      return;
+    }
+
+    const recommendations: { id: string; topic: string; score: number; commonKeywords: string[] }[] = [];
+
+    for (const line of allMeetings.trim().split("\n")) {
+      const parts = line.split("|");
+      const id = parts[0];
+      const topic = parts[1];
+
+      if (id && topic) {
+        const otherKeywords = new Set(
+          psqlQuery(`SELECT perspective FROM meeting_opinions WHERE meeting_id = '${id}';`)
+            .toLowerCase()
+            .split(/\s+/)
+            .filter(w => w.length > 4)
+        );
+
+        const common = [...currentKeywords].filter(k => otherKeywords.has(k));
+        const score = common.length;
+
+        if (score > 0) {
+          recommendations.push({ id, topic, score, commonKeywords: common.slice(0, 5) });
+        }
+      }
+    }
+
+    recommendations.sort((a, b) => b.score - a.score);
+
+    if (recommendations.length === 0) {
+      console.log("No related meetings found.");
+      return;
+    }
+
+    console.log(`🔗 Related Meetings:\n`);
+
+    for (const rec of recommendations.slice(0, 5)) {
+      console.log(`   📌 ${rec.id.substring(0, 8)} - "${rec.topic.substring(0, 40)}..."`);
+      console.log(`      Similarity: ${rec.score} keywords`);
+      console.log(`      Common: ${rec.commonKeywords.join(", ")}\n`);
+    }
+  } catch (e) {
+    console.log("Error finding recommendations.");
+  }
+}
+
+export function autoSummarizeMeeting(meetingId: string): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Auto Meeting Summary                   ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+
+  try {
+    const topic = psqlQuery(`SELECT topic FROM meetings WHERE id = '${meetingId}';`).trim();
+    const opinions = psqlQuery(`
+      SELECT author, perspective, position
+      FROM meeting_opinions
+      WHERE meeting_id = '${meetingId}'
+      ORDER BY created_at;
+    `).trim();
+
+    if (!opinions) {
+      console.log("No opinions to summarize.");
+      return;
+    }
+
+    const lines = opinions.split("\n");
+    const totalOpinions = lines.length;
+
+    const authors: { [key: string]: number } = {};
+    const positions: { [key: string]: number } = { support: 0, oppose: 0, neutral: 0 };
+    const keywords: { [key: string]: number } = {};
+
+    for (const line of lines) {
+      const parts = line.split("|");
+      const author = parts[0] || "";
+      const perspective = parts[1] || "";
+      const position = parts[2] || "neutral";
+
+      authors[author] = (authors[author] || 0) + 1;
+      positions[position] = (positions[position] || 0) + 1;
+
+      const words = perspective.toLowerCase().split(/\s+/);
+      for (const word of words) {
+        if (word.length > 4 && !["about", "their", "would", "could", "should", "there", "these", "those", "which", "where", "when", "what", "this"].includes(word)) {
+          keywords[word] = (keywords[word] || 0) + 1;
+        }
+      }
+    }
+
+    console.log(`📋 Topic: ${topic}`);
+    console.log(`📊 Total Opinions: ${totalOpinions}`);
+    console.log(`👥 Participants: ${Object.keys(authors).length}\n`);
+
+    console.log("📈 Position Distribution:");
+    for (const [pos, count] of Object.entries(positions)) {
+      const pct = Math.round((count / totalOpinions) * 100);
+      const bar = "█".repeat(Math.min(Math.floor(pct / 5), 20));
+      console.log(`   ${pos}: ${bar} ${count} (${pct}%)`);
+    }
+
+    console.log("\n🔑 Top Keywords:");
+    const topKeywords = Object.entries(keywords)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10);
+    for (const [word, count] of topKeywords) {
+      console.log(`   ${word}: ${count}`);
+    }
+
+    console.log("\n🏆 Top Contributors:");
+    const topAuthors = Object.entries(authors)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    for (const [author, count] of topAuthors) {
+      const shortAuthor = author.substring(0, 25);
+      console.log(`   ${shortAuthor}: ${count} opinions`);
+    }
+
+    console.log("\n──────────────────────────────────────────────────\n");
+  } catch (e) {
+    console.log("Error generating summary.");
+  }
+}
+
+export function showAllAIs(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     All AI Agents                          ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+
+  try {
+    const output = psqlQuery(`
+      SELECT DISTINCT author, COUNT(*) as opinions, MAX(created_at) as last_active
+      FROM meeting_opinions
+      GROUP BY author
+      ORDER BY opinions DESC
+      LIMIT 20;
+    `);
+
+    if (!output.trim()) {
+      console.log("  No AI agents found.\n");
+      return;
+    }
+
+    output.split("\n").forEach((line, i) => {
+      const parts = line.split("|");
+      const author = parts[0] || "";
+      const opinions = parts[1] || "0";
+      const lastActive = parts[2] ? new Date(parts[2]).toLocaleDateString() : "unknown";
+
+      let displayName = author;
+      if (author.startsWith("S-TRAE-")) {
+        displayName = author.replace("S-TRAE-", "");
+      } else if (author.startsWith("S-nezha-")) {
+        displayName = author.replace("S-nezha-", "nezha/");
+      } else if (author.startsWith("bot_")) {
+        displayName = `bot_${author.substring(4, 12)}`;
+      }
+
+      console.log(`  ${i + 1}. ${displayName.substring(0, 35)}`);
+      console.log(`     Opinions: ${opinions} | Last active: ${lastActive}`);
+    });
+
+    console.log("\n──────────────────────────────────────────────────\n");
+  } catch {
+    console.log("  Unable to load AI agents.\n");
+  }
+}

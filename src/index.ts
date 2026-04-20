@@ -428,10 +428,7 @@ function getProjectName(): string {
 
 function formatKnowledge(): string {
   try {
-    const output = execSync(
-      `${PSQL} -c "SELECT content, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 20;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const output = psqlQuery("SELECT content, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 20;");
     if (!output.trim()) return "No knowledge in Nezha DB yet.";
     
     const lines: string[] = [];
@@ -675,10 +672,7 @@ function addReminder(minutes: number, message: string): void {
     const meta = JSON.stringify({ id, triggerAt, triggered: false });
     const safeMessage = message.replace(/'/g, "''");
     const sql = `INSERT INTO memory (content, source, tags, metadata) VALUES ('Reminder: ${safeMessage}', 'traenupi', '${tags}', '${meta}'::jsonb);`;
-    execSync(
-      `psql -h localhost -U postgres -d nezha -c $'${sql.replace(/'/g, "'\\''")}'`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    psqlExec(sql);
   } catch (e) {
     const reminders = loadReminders();
     reminders.push({ id, message, triggerAt, triggered: false });
@@ -858,10 +852,7 @@ function showActivityHeatmap(): void {
   }
   
   try {
-    const output = execSync(
-      `${PSQL} -c "SELECT EXTRACT(HOUR FROM created_at) as hour, COUNT(*) FROM meeting_opinions WHERE created_at > NOW() - INTERVAL '24 hours' GROUP BY hour ORDER BY hour;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const output = psqlQuery("SELECT EXTRACT(HOUR FROM created_at) as hour, COUNT(*) FROM meeting_opinions WHERE created_at > NOW() - INTERVAL '24 hours' GROUP BY hour ORDER BY hour;");
     
     if (output.trim()) {
       for (const line of output.trim().split("\n")) {
@@ -986,10 +977,7 @@ function showAllAIs(): void {
   console.log("╚════════════════════════════════════════════╝\n");
   
   try {
-    const output = execSync(
-      `${PSQL} -c "SELECT author, COUNT(*) as opinions, MIN(created_at) as first_seen, MAX(created_at) as last_seen FROM meeting_opinions GROUP BY author ORDER BY opinions DESC;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const output = psqlQuery("SELECT author, COUNT(*) as opinions, MIN(created_at) as first_seen, MAX(created_at) as last_seen FROM meeting_opinions GROUP BY author ORDER BY opinions DESC;");
     
     if (!output.trim()) {
       console.log("No AI participants found.");
@@ -1034,20 +1022,14 @@ function showCollaboration(): void {
   const collaborationData: { [key: string]: { pairs: string[]; count: number } } = {};
   
   try {
-    const meetings = execSync(
-      `${PSQL} -t -c "SELECT id FROM meetings WHERE status = 'active';"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const meetings = psqlQuery("SELECT id FROM meetings WHERE status = 'active';");
     
     if (meetings.trim()) {
       for (const line of meetings.trim().split("\n")) {
         const meetingId = line.trim();
         if (!meetingId || meetingId.length < 10 || meetingId.match(/^-+$/)) continue;
         
-        const participants = execSync(
-          `${PSQL} -t -c "SELECT DISTINCT author FROM meeting_opinions WHERE meeting_id = '${meetingId}';"`,
-          { encoding: "utf-8", timeout: 5000 }
-        ).trim().split("\n").filter(p => p.trim());
+        const participants = psqlQuery(`SELECT DISTINCT author FROM meeting_opinions WHERE meeting_id = '${meetingId}';`).trim().split("\n").filter(p => p.trim());
         
         if (participants.length >= 2) {
           for (let i = 0; i < participants.length; i++) {
@@ -1103,20 +1085,11 @@ function showCollaboration(): void {
     console.log("");
   }
   
-  const totalMeetings = execSync(
-    `${PSQL} -t -A -c "SELECT COUNT(*) FROM meetings;"`,
-    { encoding: "utf-8", timeout: 5000 }
-  ).trim();
+  const totalMeetings = psqlQuery("SELECT COUNT(*) FROM meetings;").trim();
   
-  const totalOpinions = execSync(
-    `${PSQL} -t -A -c "SELECT COUNT(*) FROM meeting_opinions;"`,
-    { encoding: "utf-8", timeout: 5000 }
-  ).trim();
+  const totalOpinions = psqlQuery("SELECT COUNT(*) FROM meeting_opinions;").trim();
   
-  const uniqueAuthors = execSync(
-    `${PSQL} -t -A -c "SELECT COUNT(DISTINCT author) FROM meeting_opinions;"`,
-    { encoding: "utf-8", timeout: 5000 }
-  ).trim();
+  const uniqueAuthors = psqlQuery("SELECT COUNT(DISTINCT author) FROM meeting_opinions;").trim();
   
   console.log("──────────────────────────────────────────────────");
   console.log(`📊 Total Meetings: ${totalMeetings}`);

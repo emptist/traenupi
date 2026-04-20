@@ -193,10 +193,7 @@ function checkBabyAIParticipation(): void {
       return;
     }
     
-    const activeMeetings = execSync(
-      `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, topic FROM meetings WHERE created_at > NOW() - INTERVAL '2 hours' ORDER BY created_at DESC LIMIT 3;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const activeMeetings = psqlQuery("SELECT id, topic FROM meetings WHERE created_at > NOW() - INTERVAL '2 hours' ORDER BY created_at DESC LIMIT 3;");
     
     if (!activeMeetings.trim()) return;
     
@@ -211,10 +208,7 @@ function checkBabyAIParticipation(): void {
       
       if (!meetingId || !topic) continue;
       
-      const recentParticipation = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${meetingId}' AND author LIKE 'baby-ai-%' AND created_at > NOW() - INTERVAL '30 minutes';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const recentParticipation = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${meetingId}' AND author LIKE 'baby-ai-%' AND created_at > NOW() - INTERVAL '30 minutes';`).trim();
       
       if (recentParticipation !== "0") continue;
       
@@ -701,10 +695,7 @@ function checkReminders(): void {
   const now = Date.now();
   
   try {
-    const output = execSync(
-      `${PSQL} -c "SELECT id, content, metadata FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = false;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const output = psqlQuery("SELECT id, content, metadata FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = false;");
     
     if (output.trim()) {
       for (const line of output.trim().split("\n")) {
@@ -719,10 +710,7 @@ function checkReminders(): void {
             console.log(`\n🔔 REMINDER: ${content.replace("Reminder: ", "")}`);
             console.log(`  (Scheduled for ${new Date(meta.triggerAt).toLocaleTimeString()})`);
             
-            execSync(
-              `${PSQL} -c "UPDATE memory SET metadata = jsonb_set(metadata, '{triggered}', 'true') WHERE id = '${id}';"`,
-              { encoding: "utf-8", timeout: 5000 }
-            );
+            psqlExec(`UPDATE memory SET metadata = jsonb_set(metadata, '{triggered}', 'true') WHERE id = '${id}';`);
           }
         } catch {}
       }

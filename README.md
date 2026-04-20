@@ -119,16 +119,47 @@ nezha task-add "title"   # Add a new task
 traenupi/
 ├── bin/traenupi       # CLI entry point
 ├── src/
-│   ├── index.ts       # Main CLI logic
+│   ├── index.ts       # Main CLI (1838 lines, was 3476)
 │   ├── driver.ts      # Prompt driver mode
 │   ├── prompts.ts     # Prompt templates
 │   ├── task.ts        # Task management
-│   └── types.ts       # TypeScript interfaces
+│   ├── common/        # Shared modules (reusable)
+│   │   ├── db.ts      # Database operations (psqlQuery, psqlExec)
+│   │   ├── storage.ts # Local file storage (JSON, history)
+│   │   ├── meeting.ts # Meeting operations (opinions, stats)
+│   │   ├── knowledge.ts # Knowledge management
+│   │   └── types.ts   # Shared TypeScript interfaces
+│   └── trae/          # Trae-specific modules
+│       ├── context.ts # Context building (buildContext, PI_FLAGS)
+│       ├── baby-ai.ts # Baby AI integration (tellme, search)
+│       ├── presence.ts# AI presence tracking
+│       ├── reminders.ts # Reminder system
+│       ├── mood.ts    # Mood tracking
+│       ├── meeting-utils.ts # Meeting utilities
+│       ├── bookmarks.ts # Bookmark management
+│       ├── daemon.ts  # Background daemon
+│       └── init.ts    # Project initialization
+├── test/              # Unit tests
+│   ├── core.test.ts   # CLI and integration tests
+│   ├── db.test.ts     # Database module tests
+│   └── storage.test.ts # Storage module tests
 ├── .trae/
 │   ├── rules/         # Project rules (auto-created)
 │   └── skills/        # AI skills (auto-created)
 └── package.json
 ```
+
+### Module Architecture
+
+The codebase follows a **modular architecture** with clear separation:
+
+- **`common/`** - Reusable modules that could be shared across Nezha family projects
+- **`trae/`** - Trae IDE-specific functionality
+
+This separation enables:
+- Easier testing and maintenance
+- Potential reuse in other projects (nupi, piano, nezha)
+- Clear dependency boundaries
 
 ## Prerequisites
 

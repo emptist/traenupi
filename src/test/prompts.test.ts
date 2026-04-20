@@ -8,22 +8,37 @@ import {
   getRandomAntiWeaknessPrompt,
   resetPromptCounter,
 } from "../prompts.js";
-import type { TaskStep, WeaknessType } from "../types.js";
+import type { TaskStep, WeaknessType } from "../common/types.js";
+
+const ALL_WEAKNESS_TYPES: WeaknessType[] = [
+  "context_loss",
+  "incomplete_follow_through",
+  "edge_case_blindness",
+  "quality_drift",
+  "verification_gap",
+  "planning_drift",
+  "overconfidence",
+  "scope_creep",
+  "error_amnesia",
+  "verification_neglect",
+];
+
+const DEFAULT_WEIGHTS: Record<WeaknessType, number> = {
+  context_loss: 1,
+  incomplete_follow_through: 1,
+  edge_case_blindness: 1,
+  quality_drift: 1,
+  verification_gap: 1,
+  planning_drift: 1,
+  overconfidence: 1,
+  scope_creep: 1,
+  error_amnesia: 1,
+  verification_neglect: 1,
+};
 
 describe("ANTI_WEAKNESS_PROMPTS", () => {
   it("has prompts for every weakness type", () => {
-    const weaknessTypes: WeaknessType[] = [
-      "context_loss",
-      "incomplete_follow_through",
-      "edge_case_blindness",
-      "quality_drift",
-      "verification_gap",
-      "planning_drift",
-      "overconfidence",
-      "scope_creep",
-    ];
-
-    for (const wt of weaknessTypes) {
+    for (const wt of ALL_WEAKNESS_TYPES) {
       assert.ok(
         ANTI_WEAKNESS_PROMPTS[wt],
         `Missing prompts for weakness: ${wt}`,
@@ -111,8 +126,8 @@ describe("generateCheckpointPrompt", () => {
 
     assert.equal(prompt.category, "checkpoint");
     assert.ok(prompt.checklist);
-    assert.ok(prompt.checklist!.some((c) => c.includes("Endpoints respond")));
-    assert.ok(prompt.checklist!.some((c) => c.includes("Rate limiting")));
+    assert.ok(prompt.checklist!.some((c: string) => c.includes("Endpoints respond")));
+    assert.ok(prompt.checklist!.some((c: string) => c.includes("Rate limiting")));
   });
 });
 
@@ -133,18 +148,7 @@ describe("generateCompletionPrompt", () => {
 
 describe("getRandomAntiWeaknessPrompt", () => {
   it("returns a prompt from the ANTI_WEAKNESS_PROMPTS set", () => {
-    const weights: Record<WeaknessType, number> = {
-      context_loss: 1,
-      incomplete_follow_through: 1,
-      edge_case_blindness: 1,
-      quality_drift: 1,
-      verification_gap: 1,
-      planning_drift: 1,
-      overconfidence: 1,
-      scope_creep: 1,
-    };
-
-    const prompt = getRandomAntiWeaknessPrompt(weights);
+    const prompt = getRandomAntiWeaknessPrompt(DEFAULT_WEIGHTS);
 
     assert.ok(prompt.id);
     assert.equal(prompt.category, "anti_weakness");
@@ -154,6 +158,7 @@ describe("getRandomAntiWeaknessPrompt", () => {
 
   it("returns fallback prompt when all candidates are excluded", () => {
     const weights: Record<WeaknessType, number> = {
+      ...DEFAULT_WEIGHTS,
       context_loss: 10,
       incomplete_follow_through: 0,
       edge_case_blindness: 0,
@@ -162,6 +167,8 @@ describe("getRandomAntiWeaknessPrompt", () => {
       planning_drift: 0,
       overconfidence: 0,
       scope_creep: 0,
+      error_amnesia: 0,
+      verification_neglect: 0,
     };
 
     const allContextLossIds = new Set(

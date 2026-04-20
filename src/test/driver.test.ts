@@ -2,7 +2,20 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { PromptDriver, createDriver } from "../driver.js";
 import { createTask } from "../task.js";
-import type { DriverConfig } from "../types.js";
+import type { DriverConfig } from "../common/types.js";
+
+const DEFAULT_WEIGHTS = {
+  context_loss: 1,
+  incomplete_follow_through: 1,
+  edge_case_blindness: 1,
+  quality_drift: 1,
+  verification_gap: 1,
+  planning_drift: 1,
+  overconfidence: 1,
+  scope_creep: 1,
+  error_amnesia: 1,
+  verification_neglect: 1,
+};
 
 describe("PromptDriver", () => {
   it("throws if run is called without a task", async () => {
@@ -11,16 +24,7 @@ describe("PromptDriver", () => {
       maxPrompts: 5,
       continuous: false,
       verbose: false,
-      weaknessWeights: {
-        context_loss: 1,
-        incomplete_follow_through: 1,
-        edge_case_blindness: 1,
-        quality_drift: 1,
-        verification_gap: 1,
-        planning_drift: 1,
-        overconfidence: 1,
-        scope_creep: 1,
-      },
+      weaknessWeights: { ...DEFAULT_WEIGHTS },
     });
 
     await assert.rejects(() => driver.run(), /No task set/);
@@ -42,16 +46,7 @@ describe("PromptDriver", () => {
         maxPrompts: 100,
         continuous: false,
         verbose: false,
-        weaknessWeights: {
-          context_loss: 1,
-          incomplete_follow_through: 1,
-          edge_case_blindness: 1,
-          quality_drift: 1,
-          verification_gap: 1,
-          planning_drift: 1,
-          overconfidence: 1,
-          scope_creep: 1,
-        },
+        weaknessWeights: { ...DEFAULT_WEIGHTS },
       });
 
       const task = createTask("Test goal\n- Step one");
@@ -87,16 +82,7 @@ describe("PromptDriver", () => {
         maxPrompts: 3,
         continuous: true,
         verbose: false,
-        weaknessWeights: {
-          context_loss: 1,
-          incomplete_follow_through: 1,
-          edge_case_blindness: 1,
-          quality_drift: 1,
-          verification_gap: 1,
-          planning_drift: 1,
-          overconfidence: 1,
-          scope_creep: 1,
-        },
+        weaknessWeights: { ...DEFAULT_WEIGHTS },
       });
 
       const task = createTask("Test\n- Step 1\n- Step 2\n- Step 3");
@@ -126,16 +112,7 @@ describe("PromptDriver", () => {
         maxPrompts: 100,
         continuous: true,
         verbose: false,
-        weaknessWeights: {
-          context_loss: 1,
-          incomplete_follow_through: 1,
-          edge_case_blindness: 1,
-          quality_drift: 1,
-          verification_gap: 1,
-          planning_drift: 1,
-          overconfidence: 1,
-          scope_creep: 1,
-        },
+        weaknessWeights: { ...DEFAULT_WEIGHTS },
       });
 
       const task = createTask("Test\n- Step 1");
@@ -160,16 +137,7 @@ describe("PromptDriver", () => {
       maxPrompts: 5,
       continuous: false,
       verbose: false,
-      weaknessWeights: {
-        context_loss: 1,
-        incomplete_follow_through: 1,
-        edge_case_blindness: 1,
-        quality_drift: 1,
-        verification_gap: 1,
-        planning_drift: 1,
-        overconfidence: 1,
-        scope_creep: 1,
-      },
+      weaknessWeights: { ...DEFAULT_WEIGHTS },
     });
 
     const state1 = driver.getState();

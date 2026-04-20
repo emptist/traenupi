@@ -1,4 +1,4 @@
-import type { DriverConfig, DriverState, Prompt, Task, WeaknessType } from "./types.js";
+import type { DriverConfig, DriverState, Prompt, Task, WeaknessType } from "./common/types.js";
 import {
   generateStepPrompts,
   generateCheckpointPrompt,
@@ -85,7 +85,7 @@ export class PromptDriver {
       this.promptQueue.push(checkpoint);
 
       const antiWeakness = getRandomAntiWeaknessPrompt(
-        this.config.weaknessWeights,
+        this.config.weaknessWeights ?? {},
         this.usedPromptIds,
       );
       this.promptQueue.push(antiWeakness);
@@ -158,7 +158,7 @@ export class PromptDriver {
     }
 
     const emitNext = (): boolean => {
-      if (this.state.promptsEmitted >= this.config.maxPrompts) {
+      if (this.state.promptsEmitted >= (this.config.maxPrompts ?? 50)) {
         return false;
       }
 
@@ -171,7 +171,7 @@ export class PromptDriver {
         }
 
         if (prompt.category === "completion") {
-          this.state.phase = "complete";
+          this.state.phase = "completed";
           return false;
         }
 
@@ -180,7 +180,7 @@ export class PromptDriver {
 
       if (this.config.continuous) {
         const antiWeakness = getRandomAntiWeaknessPrompt(
-          this.config.weaknessWeights,
+          this.config.weaknessWeights ?? {},
           this.usedPromptIds,
         );
         this.emitPrompt(antiWeakness);
@@ -228,7 +228,7 @@ export class PromptDriver {
     }
 
     if (this.state.currentStepIndex >= task.steps.length) {
-      this.state.phase = "verifying";
+      this.state.phase = "completed";
     }
   }
 
@@ -247,8 +247,8 @@ export class PromptDriver {
       `${ANSI.dim}Weakness weights:${ANSI.reset}`,
     ];
 
-    for (const [weakness, weight] of Object.entries(this.config.weaknessWeights)) {
-      const bar = "█".repeat(weight) + "░".repeat(5 - weight);
+    for (const [weakness, weight] of Object.entries(this.config.weaknessWeights ?? {})) {
+      const bar = "█".repeat(weight as number) + "░".repeat(5 - (weight as number));
       lines.push(
         `  ${ANSI.dim}${weakness.padEnd(28)}${ANSI.reset} ${ANSI.magenta}${bar}${ANSI.reset} ${weight}`,
       );
@@ -272,7 +272,7 @@ export class PromptDriver {
       "",
     ];
 
-    if (this.state.phase === "complete") {
+    if (this.state.phase === "completed") {
       lines.push(
         `${ANSI.green}${ANSI.bold}All steps have been driven. Verify completion manually.${ANSI.reset}`,
       );
@@ -304,6 +304,8 @@ export function createDriver(config: Partial<DriverConfig> = {}): PromptDriver {
       planning_drift: 2,
       overconfidence: 2,
       scope_creep: 1,
+      error_amnesia: 2,
+      verification_neglect: 3,
     },
   };
 

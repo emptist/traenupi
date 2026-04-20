@@ -10,11 +10,11 @@ export function loadPresence(): AIPresence[] {
       const parts = line.split("|");
       const lastHeartbeat = parts[3] ? new Date(parts[3]).getTime() : 0;
       return {
-        id: parts[0] || "",
+        agentId: parts[0] || "",
         status: parts[1] || "",
         project: parts[2] || "",
         lastSeen: lastHeartbeat,
-        workingOn: parts[4] || "",
+        focus: parts[4] || "",
       };
     });
   } catch {
@@ -64,15 +64,15 @@ export function showPresence(): void {
       const timeSince = Math.floor((Date.now() - ai.lastSeen) / 60000);
       const timeStr = timeSince < 1 ? "just now" : `${timeSince}m ago`;
 
-      let displayName = ai.id;
-      if (ai.id.startsWith("S-TRAE-")) {
-        displayName = ai.id.replace("S-TRAE-", "");
-      } else if (ai.id.startsWith("S-nezha-")) {
-        displayName = ai.id.replace("S-nezha-", "nezha/");
-      } else if (ai.id.startsWith("bot_")) {
-        displayName = `bot_${ai.id.substring(4, 12)}`;
-      } else if (ai.id.startsWith("baby-ai-")) {
-        displayName = `baby-ai/${ai.id.substring(8, 16)}`;
+      let displayName = ai.agentId;
+      if (ai.agentId.startsWith("S-TRAE-")) {
+        displayName = ai.agentId.replace("S-TRAE-", "");
+      } else if (ai.agentId.startsWith("S-nezha-")) {
+        displayName = ai.agentId.replace("S-nezha-", "nezha/");
+      } else if (ai.agentId.startsWith("bot_")) {
+        displayName = `bot_${ai.agentId.substring(4, 12)}`;
+      } else if (ai.agentId.startsWith("baby-ai-")) {
+        displayName = `baby-ai/${ai.agentId.substring(8, 16)}`;
       }
 
       console.log(`👤 ${displayName}`);

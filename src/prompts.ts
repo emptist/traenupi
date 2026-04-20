@@ -1,4 +1,4 @@
-import type { Prompt, WeaknessType, PromptCategory, TaskStep } from "./types.js";
+import type { Prompt, WeaknessType, PromptCategory, TaskStep } from "./common/types.js";
 
 let promptCounter = 0;
 
@@ -291,6 +291,34 @@ export const ANTI_WEAKNESS_PROMPTS: Record<WeaknessType, Prompt[]> = {
       ],
     },
   ],
+  error_amnesia: [
+    {
+      id: pid("anti_weakness", "error_amnesia"),
+      category: "anti_weakness",
+      weakness: "error_amnesia",
+      title: "Error Memory Check",
+      body: "Have you encountered errors in this session? List them. Are you sure you've addressed all of them? Forgotten errors become bugs.",
+      checklist: [
+        "I've listed all errors encountered",
+        "Each error has been properly handled",
+        "I haven't assumed errors 'fixed themselves'",
+      ],
+    },
+  ],
+  verification_neglect: [
+    {
+      id: pid("anti_weakness", "verification_neglect"),
+      category: "anti_weakness",
+      weakness: "verification_neglect",
+      title: "Verification Reminder",
+      body: "Did you actually verify your changes work? Running tests is not optional. Manual verification is not optional. Check it now.",
+      checklist: [
+        "I ran the relevant tests",
+        "I manually verified the changes",
+        "I didn't skip verification due to time pressure",
+      ],
+    },
+  ],
 };
 
 export function generateStepPrompts(step: TaskStep): Prompt[] {
@@ -375,7 +403,7 @@ export function generateCompletionPrompt(task: { goal: string; steps: TaskStep[]
 }
 
 export function getRandomAntiWeaknessPrompt(
-  weights: Record<WeaknessType, number>,
+  weights: Partial<Record<WeaknessType, number>>,
   exclude?: Set<string>,
 ): Prompt {
   const entries = Object.entries(weights) as [WeaknessType, number][];

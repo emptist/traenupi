@@ -58,11 +58,11 @@ export interface MoodEntry {
 }
 
 export interface AIPresence {
-  id: string;
-  status: string;
-  project: string;
+  agentId: string;
   lastSeen: number;
-  workingOn: string;
+  status: string;
+  focus: string;
+  project: string;
 }
 
 export interface ActivityStats {
@@ -72,4 +72,58 @@ export interface ActivityStats {
   babyAiContributions: number;
   tweetsCreated: number;
   remindersTriggered: number;
+}
+
+export type PromptCategory = "action" | "verify" | "reflect" | "anti_weakness" | "checkpoint" | "completion";
+
+export type WeaknessType = "context_loss" | "incomplete_follow_through" | "planning_drift" | "error_amnesia" | "verification_neglect" | "edge_case_blindness" | "quality_drift" | "verification_gap" | "overconfidence" | "scope_creep";
+
+export interface Prompt {
+  id: string;
+  category: PromptCategory;
+  weakness?: WeaknessType;
+  title: string;
+  body: string;
+  checklist?: string[];
+}
+
+export interface TaskStep {
+  index: number;
+  description: string;
+  verification: string[];
+  edgeCases: string[];
+  completed: boolean;
+}
+
+export interface Task {
+  id: string;
+  description: string;
+  goal: string;
+  steps: TaskStep[];
+  createdAt: number;
+}
+
+export interface DriverConfig {
+  intervalMs?: number;
+  maxPromptsPerStep?: number;
+  maxPrompts?: number;
+  antiWeaknessProbability?: number;
+  checkpointInterval?: number;
+  continuous?: boolean;
+  verbose?: boolean;
+  help?: boolean;
+  taskDescription?: string;
+  taskFile?: string;
+  weaknessWeights?: Record<WeaknessType, number>;
+  onPrompt?: (prompt: Prompt) => void;
+  onComplete?: (task: Task) => void;
+  onError?: (error: Error) => void;
+}
+
+export interface DriverState {
+  task: Task | null;
+  currentStepIndex: number;
+  promptsEmitted: number;
+  lastPromptTime: number;
+  phase: "planning" | "executing" | "completed" | "error";
 }

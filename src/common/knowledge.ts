@@ -2,6 +2,8 @@ import { psqlQuery, psqlExec } from "./db.js";
 import { loadJsonFile, saveJsonFile, getStoragePath } from "./storage.js";
 import type { KnowledgeEntry } from "./types.js";
 
+export type { KnowledgeEntry } from "./types.js";
+
 export interface KnowledgeConfig {
   source?: string;
   useDatabase?: boolean;

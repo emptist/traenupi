@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { ConversationItem, Reminder, Bookmark, MoodEntry } from "./types.js";
 
+export type { ConversationItem, Reminder, Bookmark, MoodEntry } from "./types.js";
+
 export interface StorageConfig {
   baseDir?: string;
 }

@@ -6,10 +6,10 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { createDriver } from "./driver.js";
 import { createTask, loadTask } from "./task.js";
-import type { DriverConfig } from "./types.js";
-import { psqlQuery, psqlExec, getAgentId, resolveMeetingId } from "./db.js";
-import { loadKnowledge, addKnowledge, getKnowledgeByCategory, loadKnowledgeLocal, type KnowledgeEntry } from "./knowledge.js";
-import { addOpinion, getMeetingOpinions, getMeetingInfo, getActiveMeetings } from "./meeting.js";
+import type { DriverConfig } from "./common/types.js";
+import { psqlQuery, psqlExec, getAgentId, resolveMeetingId } from "./common/db.js";
+import { loadKnowledge, addKnowledge, getKnowledgeByCategory, loadKnowledgeLocal, type KnowledgeEntry } from "./common/knowledge.js";
+import { addOpinion, getMeetingOpinions, getMeetingInfo, getActiveMeetings } from "./common/meeting.js";
 import { 
   ensureDir, 
   loadHistory, 
@@ -22,11 +22,14 @@ import {
   saveMoodHistory,
   loadJsonFile,
   saveJsonFile,
+  loadState,
+  saveState,
   type ConversationItem,
   type Reminder,
   type Bookmark,
   type MoodEntry
-} from "./storage.js";
+} from "./common/storage.js";
+import type { AIPresence } from "./common/types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(readFileSync(join(__dirname, "..", "package.json"), "utf-8")).version;
@@ -43,14 +46,6 @@ const BABY_AI_STATE_FILE = join(TRAENUPI_DIR, "baby_ai_state.json");
 const PRESENCE_FILE = join(TRAENUPI_DIR, "presence.json");
 const BOOKMARKS_FILE = join(TRAENUPI_DIR, "bookmarks.json");
 const MOOD_FILE = join(TRAENUPI_DIR, "mood_history.json");
-
-interface AIPresence {
-  agentId: string;
-  lastSeen: number;
-  status: string;
-  focus: string;
-  project: string;
-}
 
 const PSQL = "psql -h localhost -U postgres -d nezha";
 

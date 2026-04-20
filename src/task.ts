@@ -1,5 +1,5 @@
 import { readFileSync } from "fs";
-import type { Task, TaskStep } from "./types.js";
+import type { Task, TaskStep } from "./common/types.js";
 
 export interface TaskFileFormat {
   goal: string;

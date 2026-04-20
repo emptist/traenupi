@@ -1936,10 +1936,7 @@ async function main(): Promise<void> {
     
     if (rest.length === 0) {
       try {
-        const output = execSync(
-          `${PSQL} -c "SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 30;"`,
-          { encoding: "utf-8", timeout: 5000 }
-        );
+        const output = psqlQuery("SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 30;");
         if (output.trim()) {
           console.log("[TRAENUPI] Knowledge Store (Nezha DB)\n");
           for (const line of output.trim().split("\n")) {
@@ -2019,10 +2016,7 @@ async function main(): Promise<void> {
       console.log(`[TRAENUPI] Searching for "${searchTerm}"...\n`);
       
       try {
-        const output = execSync(
-          `${PSQL} -c "SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' AND content ILIKE '%${searchTerm}%' ORDER BY created_at DESC LIMIT 20;"`,
-          { encoding: "utf-8", timeout: 5000 }
-        );
+        const output = psqlQuery(`SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' AND content ILIKE '%${searchTerm}%' ORDER BY created_at DESC LIMIT 20;`);
         
         if (output.trim()) {
           const lines = output.trim().split("\n");
@@ -2515,10 +2509,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
     
     // Knowledge stored today
     try {
-      const knowledgeToday = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM memory WHERE source = 'traenupi' AND created_at::date = '${today}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const knowledgeToday = psqlQuery(`SELECT COUNT(*) FROM memory WHERE source = 'traenupi' AND created_at::date = '${today}';`).trim();
       console.log(`📚 Knowledge stored: ${knowledgeToday}`);
     } catch {
       console.log("📚 Knowledge stored: 0");
@@ -2526,10 +2517,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
     
     // Meeting opinions today
     try {
-      const opinionsToday = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE created_at::date = '${today}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const opinionsToday = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE created_at::date = '${today}';`).trim();
       console.log(`🗣️ Meeting opinions: ${opinionsToday}`);
     } catch {
       console.log("🗣️ Meeting opinions: 0");
@@ -2537,10 +2525,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
     
     // Baby AI contributions today
     try {
-      const babyAiToday = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE author LIKE 'baby-ai-%' AND created_at::date = '${today}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const babyAiToday = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE author LIKE 'baby-ai-%' AND created_at::date = '${today}';`).trim();
       console.log(`👶 Baby AI contributions: ${babyAiToday}`);
     } catch {
       console.log("👶 Baby AI contributions: 0");
@@ -2680,10 +2665,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
         return;
       }
       
-      const lastOpinion = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const lastOpinion = psqlQuery(`SELECT id, author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;`).trim();
       
       if (!lastOpinion) {
         console.log("[ERROR] No opinions in this meeting.");
@@ -2722,10 +2704,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
     
     if (!subCommand || subCommand === "list") {
       console.log("[TRAENUPI] Active Meetings\n");
-      const output = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, topic, status, created_by FROM meetings WHERE status = 'active' ORDER BY created_at DESC LIMIT 10;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
+      const output = psqlQuery("SELECT id, topic, status, created_by FROM meetings WHERE status = 'active' ORDER BY created_at DESC LIMIT 10;");
       if (output.trim()) {
         output.trim().split("\n").forEach(line => {
           const parts = line.split("|");
@@ -2758,10 +2737,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       
       console.log(`[TRAENUPI] Meeting: ${fullId.substring(0, 8)}\n`);
       
-      const opinions = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
+      const opinions = psqlQuery(`SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;`);
       
       if (opinions.trim()) {
         opinions.trim().split("\n").forEach((line, idx) => {
@@ -2812,10 +2788,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
         return;
       }
       
-      const opinionData = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT meeting_id, author FROM meeting_opinions WHERE id = '${opinionId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const opinionData = psqlQuery(`SELECT meeting_id, author FROM meeting_opinions WHERE id = '${opinionId}';`).trim();
       
       if (!opinionData) {
         console.log("[ERROR] Opinion not found.");
@@ -2843,10 +2816,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
         return;
       }
       
-      const opinionData = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT meeting_id, author, perspective, created_at FROM meeting_opinions WHERE id = '${opinionId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const opinionData = psqlQuery(`SELECT meeting_id, author, perspective, created_at FROM meeting_opinions WHERE id = '${opinionId}';`).trim();
       
       if (!opinionData) {
         console.log("[ERROR] Opinion not found.");
@@ -2866,10 +2836,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log(`   Time: ${date}`);
       console.log(`   Message: "${perspective}"\n`);
       
-      const replies = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${meetingId}' AND perspective LIKE '@${author.substring(0, 15)}%' ORDER BY created_at;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const replies = psqlQuery(`SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${meetingId}' AND perspective LIKE '@${author.substring(0, 15)}%' ORDER BY created_at;`).trim();
       
       if (replies) {
         console.log(`💬 Replies:\n`);
@@ -2906,10 +2873,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
         return;
       }
       
-      const meetingInfo = execSync(
-        `${PSQL} -t -A -c "SELECT topic FROM meetings WHERE id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const meetingInfo = psqlQuery(`SELECT topic FROM meetings WHERE id = '${fullId}';`).trim();
       
       console.log(`\n╔════════════════════════════════════════════╗`);
       console.log(`║  💬 ${meetingInfo.substring(0, 32).padEnd(32)}  ║`);
@@ -2918,10 +2882,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log("Press Ctrl+C to stop.\n");
       console.log("──────────────────────────────────────────────────\n");
       
-      const existingOpinions = execSync(
-        `${PSQL} -t -A -c "SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
+      const existingOpinions = psqlQuery(`SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC;`);
       
       let lastCount = 0;
       existingOpinions.trim().split("\n").forEach(line => {
@@ -2936,16 +2897,10 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       });
       
       while (true) {
-        const count = parseInt(execSync(
-          `${PSQL} -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
-          { encoding: "utf-8", timeout: 5000 }
-        ).trim() || "0");
+        const count = parseInt(psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim() || "0");
         
         if (count > lastCount) {
-          const newOpinions = execSync(
-            `${PSQL} -t -A -c "SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC OFFSET ${lastCount};"`,
-            { encoding: "utf-8", timeout: 5000 }
-          );
+          const newOpinions = psqlQuery(`SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC OFFSET ${lastCount};`);
           
           newOpinions.trim().split("\n").forEach(line => {
             const parts = line.split("|");
@@ -3084,50 +3039,23 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log(`║     Meeting Statistics                     ║`);
       console.log(`╚════════════════════════════════════════════╝\n`);
       
-      const totalOpinions = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const totalOpinions = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
       
-      const totalParticipants = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const totalParticipants = psqlQuery(`SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
       
-      const supports = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const supports = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';`).trim();
       
-      const opposes = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const opposes = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';`).trim();
       
-      const neutrals = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const neutrals = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';`).trim();
       
-      const babyAiCount = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND author LIKE 'baby-ai-%';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const babyAiCount = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND author LIKE 'baby-ai-%';`).trim();
       
-      const firstOpinion = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC LIMIT 1;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const firstOpinion = psqlQuery(`SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC LIMIT 1;`).trim();
       
-      const lastOpinion = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const lastOpinion = psqlQuery(`SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;`).trim();
       
-      const avgLength = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT AVG(LENGTH(perspective))::int FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const avgLength = psqlQuery(`SELECT AVG(LENGTH(perspective))::int FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
       
       console.log(`📊 Total opinions: ${totalOpinions}`);
       console.log(`👥 Total participants: ${totalParticipants}`);
@@ -3207,17 +3135,11 @@ Welcome! You're now working with TraeNuPI, your AI companion.
         return;
       }
       
-      const meetingInfo = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT topic, created_by, created_at FROM meetings WHERE id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const meetingInfo = psqlQuery(`SELECT topic, created_by, created_at FROM meetings WHERE id = '${fullId}';`).trim();
       
       const [topic, createdBy, createdAt] = meetingInfo.split("|");
       
-      const opinions = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective, position, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const opinions = psqlQuery(`SELECT author, perspective, position, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC;`).trim();
       
       const lines = opinions.split("\n");
       const date = new Date().toISOString().split("T")[0];
@@ -3273,10 +3195,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       
       console.log(`[TRAENUPI] Timeline for meeting ${fullId.substring(0, 8)} (last ${limit} opinions):\n`);
       
-      const timeline = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT ${limit};"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const timeline = psqlQuery(`SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT ${limit};`).trim();
       
       if (!timeline) {
         console.log("No opinions yet.");
@@ -3323,10 +3242,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       
       console.log(`[TRAENUPI] Searching for "${searchTerm}" in meeting ${fullId.substring(0, 8)}...\n`);
       
-      const results = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' AND perspective ILIKE '%${searchTerm}%';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const results = psqlQuery(`SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' AND perspective ILIKE '%${searchTerm}%';`).trim();
       
       if (!results) {
         console.log("No matching opinions found.");
@@ -3364,10 +3280,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       
       console.log(`[TRAENUPI] Participants in meeting ${fullId.substring(0, 8)}:\n`);
       
-      const participants = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, COUNT(*) as count FROM meeting_opinions WHERE meeting_id = '${fullId}' GROUP BY author ORDER BY count DESC;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const participants = psqlQuery(`SELECT author, COUNT(*) as count FROM meeting_opinions WHERE meeting_id = '${fullId}' GROUP BY author ORDER BY count DESC;`).trim();
       
       if (!participants) {
         console.log("No participants yet.");
@@ -3405,10 +3318,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
         return;
       }
       
-      const meetingInfo = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT topic, created_by, created_at, status FROM meetings WHERE id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const meetingInfo = psqlQuery(`SELECT topic, created_by, created_at, status FROM meetings WHERE id = '${fullId}';`).trim();
       
       const [topic, createdBy, createdAt, status] = meetingInfo.split("|");
       
@@ -3421,43 +3331,25 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log(`📅 Created: ${createdAt}`);
       console.log(`📊 Status: ${status || 'active'}`);
       
-      const opinionCount = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const opinionCount = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
       
-      const participantCount = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const participantCount = psqlQuery(`SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
       
       console.log(`👥 Participants: ${participantCount}`);
       console.log(`📝 Opinions: ${opinionCount}`);
       
-      const supports = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const supports = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';`).trim();
       
-      const opposes = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const opposes = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';`).trim();
       
-      const neutrals = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const neutrals = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';`).trim();
       
       console.log(`\n📊 Positions:`);
       console.log(`   ✅ Support: ${supports}`);
       console.log(`   ❌ Oppose: ${opposes}`);
       console.log(`   ⚪ Neutral: ${neutrals}`);
       
-      const lastOpinion = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      ).trim();
+      const lastOpinion = psqlQuery(`SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;`).trim();
       
       if (lastOpinion) {
         const [author, perspective] = lastOpinion.split("|");
@@ -3484,10 +3376,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
         return;
       }
       
-      execSync(
-        `psql -h localhost -U postgres -d nezha -c "UPDATE meetings SET status = 'closed', updated_at = NOW() WHERE id = '${fullId}';"`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
+      psqlExec(`UPDATE meetings SET status = 'closed', updated_at = NOW() WHERE id = '${fullId}';`);
       
       console.log(`[TRAENUPI] Meeting ${fullId.substring(0, 8)} has been closed.`);
       return;
@@ -3509,10 +3398,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       
       console.log(`[TRAENUPI] Analyzing consensus for meeting ${fullId.substring(0, 8)}...\n`);
       
-      const opinions = execSync(
-        `psql -h localhost -U postgres -d nezha -t -A -c "SELECT author, position, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;"`,
-        { encoding: "utf-8", timeout: 5000 }
-      );
+      const opinions = psqlQuery(`SELECT author, position, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;`);
       
       const lines = opinions.trim().split("\n").filter((l: string) => l);
       const supports = lines.filter((l: string) => l.split("|")[1] === "support").length;

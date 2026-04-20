@@ -1106,10 +1106,7 @@ function crossMeetingSearch(term: string): void {
   console.log(`🔍 Searching for "${term}" across all meetings...\n`);
   
   try {
-    const output = execSync(
-      `${PSQL} -c "SELECT m.id, m.topic, o.author, o.perspective, o.created_at FROM meetings m JOIN meeting_opinions o ON m.id = o.meeting_id WHERE o.perspective ILIKE '%${term}%' ORDER BY o.created_at DESC LIMIT 30;"`,
-      { encoding: "utf-8", timeout: 10000 }
-    );
+    const output = psqlQuery(`SELECT m.id, m.topic, o.author, o.perspective, o.created_at FROM meetings m JOIN meeting_opinions o ON m.id = o.meeting_id WHERE o.perspective ILIKE '%${term}%' ORDER BY o.created_at DESC LIMIT 30;`);
     
     if (!output.trim()) {
       console.log("No results found.");
@@ -1164,15 +1161,9 @@ function recommendMeetings(meetingId: string): void {
   console.log("╚════════════════════════════════════════════╝\n");
   
   try {
-    const currentTopic = execSync(
-      `${PSQL} -t -A -c "SELECT topic FROM meetings WHERE id = '${meetingId}';"`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
+    const currentTopic = psqlQuery(`SELECT topic FROM meetings WHERE id = '${meetingId}';`).trim();
     
-    const currentOpinions = execSync(
-      `${PSQL} -t -A -c "SELECT perspective FROM meeting_opinions WHERE meeting_id = '${meetingId}';"`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
+    const currentOpinions = psqlQuery(`SELECT perspective FROM meeting_opinions WHERE meeting_id = '${meetingId}';`).trim();
     
     const currentKeywords = new Set<string>();
     const words = currentOpinions.toLowerCase().split(/\s+/);
@@ -1185,10 +1176,7 @@ function recommendMeetings(meetingId: string): void {
     console.log(`📋 Current Meeting: ${currentTopic.substring(0, 50)}...`);
     console.log(`🔑 Keywords: ${Array.from(currentKeywords).slice(0, 10).join(", ")}\n`);
     
-    const allMeetings = execSync(
-      `${PSQL} -t -A -c "SELECT m.id, m.topic, STRING_AGG(o.perspective, ' ') as all_opinions FROM meetings m LEFT JOIN meeting_opinions o ON m.id = o.meeting_id WHERE m.id != '${meetingId}' AND m.status = 'active' GROUP BY m.id, m.topic;"`,
-      { encoding: "utf-8", timeout: 10000 }
-    ).trim();
+    const allMeetings = psqlQuery(`SELECT m.id, m.topic, STRING_AGG(o.perspective, ' ') as all_opinions FROM meetings m LEFT JOIN meeting_opinions o ON m.id = o.meeting_id WHERE m.id != '${meetingId}' AND m.status = 'active' GROUP BY m.id, m.topic;`).trim();
     
     if (!allMeetings) {
       console.log("No related meetings found.");
@@ -1248,15 +1236,9 @@ function autoSummarizeMeeting(meetingId: string): void {
   console.log("╚════════════════════════════════════════════╝\n");
   
   try {
-    const topic = execSync(
-      `${PSQL} -t -A -c "SELECT topic FROM meetings WHERE id = '${meetingId}';"`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
+    const topic = psqlQuery(`SELECT topic FROM meetings WHERE id = '${meetingId}';`).trim();
     
-    const opinions = execSync(
-      `${PSQL} -t -A -c "SELECT author, perspective, position FROM meeting_opinions WHERE meeting_id = '${meetingId}' ORDER BY created_at;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
+    const opinions = psqlQuery(`SELECT author, perspective, position FROM meeting_opinions WHERE meeting_id = '${meetingId}' ORDER BY created_at;`).trim();
     
     if (!opinions) {
       console.log("No opinions to summarize.");
@@ -1388,10 +1370,7 @@ function createMeetingFromTemplate(topic: string, templateName: string): void {
   }
   
   try {
-    const meetingId = execSync(
-      `psql -h localhost -U postgres -d nezha -t -A -c "INSERT INTO meetings (topic, status, created_by) VALUES ('${topic}', 'active', 'traenupi') RETURNING id;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    ).trim();
+    const meetingId = psqlQuery(`INSERT INTO meetings (topic, status, created_by) VALUES ('${topic}', 'active', 'traenupi') RETURNING id;`).trim();
     
     console.log(`[TRAENUPI] Meeting created from template!`);
     console.log(`   ID: ${meetingId}`);
@@ -1461,10 +1440,7 @@ function listBookmarks(): void {
 
 function listReminders(): void {
   try {
-    const output = execSync(
-      `psql -h localhost -U postgres -d nezha -t -A -c "SELECT content, metadata FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = false ORDER BY created_at DESC;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const output = psqlQuery("SELECT content, metadata FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = false ORDER BY created_at DESC;");
     
     if (!output.trim()) {
       console.log("[TRAENUPI] No pending reminders.");
@@ -1510,10 +1486,7 @@ function listReminders(): void {
 
 function clearTriggeredReminders(): void {
   try {
-    const result = execSync(
-      `psql -h localhost -U postgres -d nezha -t -A -c "DELETE FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = true RETURNING id;"`,
-      { encoding: "utf-8", timeout: 5000 }
-    );
+    const result = psqlQuery("DELETE FROM memory WHERE source = 'traenupi' AND 'reminder' = ANY(tags) AND (metadata->>'triggered')::boolean = true RETURNING id;");
     
     const count = result.trim().split("\n").filter(l => l.trim()).length;
     console.log(`[TRAENUPI] Cleared ${count} triggered reminder(s) from Nezha DB.`);

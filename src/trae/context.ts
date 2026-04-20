@@ -129,3 +129,5 @@ export function buildQuickContext(history: ConversationItem[], currentQuestion?:
 }
 
 export { PI_SESSION_DIR };
+
+export const PI_FLAGS = ["--no-tools", "--no-context-files", "--no-skills", "--no-prompt-templates"];

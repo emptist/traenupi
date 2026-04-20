@@ -240,3 +240,83 @@ export function showAllAIs(): void {
     console.log("  Unable to load AI agents.\n");
   }
 }
+
+export function showMeetingTemplates(): void {
+  console.log("╔════════════════════════════════════════════╗");
+  console.log("║     Meeting Templates                      ║");
+  console.log("╚════════════════════════════════════════════╝\n");
+  
+  const templates = [
+    {
+      name: "brainstorm",
+      description: "Brainstorming session",
+      structure: ["Problem Statement", "Ideas Generation", "Discussion", "Action Items"]
+    },
+    {
+      name: "decision",
+      description: "Decision making meeting",
+      structure: ["Context", "Options", "Pros/Cons", "Vote", "Decision"]
+    },
+    {
+      name: "standup",
+      description: "Daily standup",
+      structure: ["What I did", "What I'm doing", "Blockers"]
+    },
+    {
+      name: "retro",
+      description: "Sprint retrospective",
+      structure: ["What went well", "What didn't", "Action items"]
+    },
+    {
+      name: "planning",
+      description: "Sprint planning",
+      structure: ["Goals", "Tasks", "Assignments", "Timeline"]
+    }
+  ];
+  
+  console.log("Available templates:\n");
+  
+  for (const t of templates) {
+    console.log(`📌 ${t.name} - ${t.description}`);
+    console.log(`   Structure: ${t.structure.join(" → ")}`);
+    console.log("");
+  }
+  
+  console.log("──────────────────────────────────────────────────");
+  console.log("Usage: traenupi meeting create <topic> --template <name>");
+}
+
+export function createMeetingFromTemplate(topic: string, templateName: string): void {
+  const templates: { [key: string]: string[] } = {
+    brainstorm: ["Problem Statement", "Ideas Generation", "Discussion", "Action Items"],
+    decision: ["Context", "Options", "Pros/Cons", "Vote", "Decision"],
+    standup: ["What I did", "What I'm doing", "Blockers"],
+    retro: ["What went well", "What didn't", "Action items"],
+    planning: ["Goals", "Tasks", "Assignments", "Timeline"]
+  };
+  
+  const structure = templates[templateName];
+  if (!structure) {
+    console.log(`[ERROR] Unknown template: ${templateName}`);
+    console.log("Available: brainstorm, decision, standup, retro, planning");
+    return;
+  }
+  
+  try {
+    const meetingId = psqlQuery(`INSERT INTO meetings (topic, status, created_by) VALUES ('${topic}', 'active', 'traenupi') RETURNING id;`).trim();
+    
+    console.log(`[TRAENUPI] Meeting created from template!`);
+    console.log(`   ID: ${meetingId}`);
+    console.log(`   Topic: ${topic}`);
+    console.log(`   Template: ${templateName}`);
+    console.log(`\n📋 Agenda:`);
+    
+    for (let i = 0; i < structure.length; i++) {
+      console.log(`   ${i + 1}. ${structure[i]}`);
+    }
+    
+    console.log(`\n💡 Use 'traenupi meeting say ${meetingId.substring(0, 8)} <message>' to add opinions`);
+  } catch (e) {
+    console.log("[ERROR] Failed to create meeting.");
+  }
+}

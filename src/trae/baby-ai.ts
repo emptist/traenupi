@@ -2,9 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import type { ConversationItem } from "../common/types.js";
 import { loadHistory, saveHistory, ensureDir } from "../common/storage.js";
-import { buildContext, buildQuickContext, PI_SESSION_DIR } from "./context.js";
-
-const PI_FLAGS = ["--no-tools", "--no-context-files", "--no-skills", "--no-prompt-templates"];
+import { buildContext, buildQuickContext, PI_SESSION_DIR, PI_FLAGS } from "./context.js";
 
 export function askPi(question: string, history: ConversationItem[], quick: boolean = false, useSession: boolean = false): string {
   try {
@@ -118,5 +116,3 @@ function sleep(ms: number): void {
   const end = Date.now() + ms;
   while (Date.now() < end) {}
 }
-
-export { PI_FLAGS };

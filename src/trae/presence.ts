@@ -3,7 +3,7 @@ import { psqlQuery, psqlExec, getAgentId } from "../common/db.js";
 
 export function loadPresence(): AIPresence[] {
   try {
-    const output = psqlQuery("SELECT id, status, project, last_heartbeat, working_on FROM agent_sessions ORDER BY last_heartbeat DESC;");
+    const output = psqlQuery("SELECT id, status, agent_type, last_heartbeat, working_on FROM agent_sessions ORDER BY last_heartbeat DESC;");
     if (!output.trim()) return [];
 
     return output.split("\n").map(line => {

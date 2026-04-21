@@ -540,18 +540,6 @@ async function main(): Promise<void> {
       console.log("💬 Meetings: N/A");
     }
     
-    // Xcom stats
-    try {
-      const xcomQueue = join(homedir(), ".xcom", "queue.json");
-      if (existsSync(xcomQueue)) {
-        const queue = JSON.parse(readFileSync(xcomQueue, "utf-8"));
-        const pending = queue.filter((t: { status: string }) => t.status === "pending").length;
-        console.log(`🐦 Xcom: ${pending} pending tweets`);
-      }
-    } catch {
-      console.log("🐦 Xcom: N/A");
-    }
-    
     // Nezha tasks
     try {
       const tasks = psqlQuery("SELECT COUNT(*) FROM tasks WHERE status IN ('PENDING', 'RUNNING', 'PAUSED');");
@@ -888,21 +876,6 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log(`👶 Baby AI contributions: ${babyAiToday}`);
     } catch {
       console.log("👶 Baby AI contributions: 0");
-    }
-    
-    // Xcom tweets today
-    try {
-      const xcomQueue = join(homedir(), ".xcom", "queue.json");
-      if (existsSync(xcomQueue)) {
-        const queue = JSON.parse(readFileSync(xcomQueue, "utf-8"));
-        const todayTweets = queue.filter((t: { createdAt: string }) => {
-          const tweetDate = new Date(t.createdAt).toISOString().split("T")[0];
-          return tweetDate === today;
-        });
-        console.log(`🐦 Tweets created: ${todayTweets.length}`);
-      }
-    } catch {
-      console.log("🐦 Tweets created: 0");
     }
     
     // Reminders triggered today

@@ -73,17 +73,6 @@ export function formatKnowledge(): string {
   }
 }
 
-export function getXcomStats(): string {
-  try {
-    const pending = psqlQuery("SELECT COUNT(*) FROM tweets WHERE status = 'pending';");
-    const scheduled = psqlQuery("SELECT COUNT(*) FROM tweets WHERE status = 'scheduled';");
-    const sent = psqlQuery("SELECT COUNT(*) FROM tweets WHERE status = 'sent';");
-    return `${pending.trim() || "0"} pending, ${scheduled.trim() || "0"} scheduled, ${sent.trim() || "0"} sent`;
-  } catch {
-    return "N/A";
-  }
-}
-
 export function getNezhaTasks(): string {
   try {
     const output = psqlQuery("SELECT COUNT(*) FROM tasks WHERE status IN ('PENDING', 'RUNNING', 'PAUSED');");
@@ -110,7 +99,7 @@ export function buildContext(history: ConversationItem[], currentQuestion?: stri
     }
   } catch {}
 
-  return `You are TraeNuPI, an AI companion. Project: ${project}. ${moodInfo}Answer in plain text, no JSON. Recent: ${recentHistory || "none"}. Working dir: ${workingDir}. Knowledge: ${knowledge}. Xcom: ${xcomStats}. Nezha tasks: ${tasks}.`;
+  return `You are TraeNuPI, an AI companion. Project: ${project}. ${moodInfo}Answer in plain text, no JSON. Recent: ${recentHistory || "none"}. Working dir: ${workingDir}. Knowledge: ${knowledge}. Xcom: ${xcomStats}. Nezha tasks: ${tasks}. IMPORTANT: Focus on work, not chat. Ask: What important things did I forget today? What issues are unresolved? What tasks are incomplete? What documentation needs updating?`;
 }
 
 export function buildQuickContext(history: ConversationItem[], currentQuestion?: string): string {
@@ -125,7 +114,7 @@ export function buildQuickContext(history: ConversationItem[], currentQuestion?:
     }
   } catch {}
 
-  return `You are TraeNuPI, an AI companion. Project: ${project}. ${moodInfo}Answer in plain text, no JSON. Recent: ${recentHistory || "none"}.`;
+  return `You are TraeNuPI, an AI companion. Project: ${project}. ${moodInfo}Answer in plain text, no JSON. Recent: ${recentHistory || "none"}. IMPORTANT: Focus on work, not chat. Ask: What important things did I forget today? What issues are unresolved? What tasks are incomplete? What documentation needs updating?`;
 }
 
 export { PI_SESSION_DIR };

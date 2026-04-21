@@ -39,6 +39,44 @@ export function checkMeetingNotifications(): void {
   } catch {}
 }
 
+export function checkNezhaFeatures(): void {
+  try {
+    const features = [
+      "nezha tasks - 列出当前任务",
+      "nezha task-add <title> - 添加新任务",
+      "nezha issue-add <title> - 添加问题",
+      "nezha meeting discuss <topic> <desc> - 创建AI讨论",
+      "nezha skill list - 列出所有技能",
+      "nezha learn <insight> - 学习洞察",
+      "nezha areflect <text> - 创建学习+任务+问题",
+    ];
+
+    const lastReminder = psqlQuery(`
+      SELECT created_at FROM memory
+      WHERE source = 'traenupi'
+      AND tags @> ARRAY['nezha', 'features', 'reminder']
+      ORDER BY created_at DESC
+      LIMIT 1;
+    `, { silent: true });
+
+    const lastTime = lastReminder ? new Date(lastReminder).getTime() : 0;
+    const now = Date.now();
+    const hoursSinceLastReminder = (now - lastTime) / (1000 * 60 * 60);
+
+    if (hoursSinceLastReminder >= 4) {
+      const randomFeature = features[Math.floor(Math.random() * features.length)];
+      console.log("\n🧠 Nezha Feature Reminder:");
+      console.log(`  ${randomFeature}`);
+      console.log("  Run 'nezha --help' for more commands.\n");
+
+      psqlExec(`
+        INSERT INTO memory (source, content, tags, importance, agent_id)
+        VALUES ('traenupi', 'Reminded about: ${randomFeature.replace(/'/g, "''")}', '{nezha,features,reminder}', 5, '${getAgentId()}');
+      `);
+    }
+  } catch {}
+}
+
 export function checkBabyAIParticipation(): void {
   try {
     const output = psqlQuery(`
@@ -88,6 +126,7 @@ export function runDaemon(): void {
     checkReminders();
     checkMeetingNotifications();
     checkBabyAIParticipation();
+    checkNezhaFeatures();
 
     presenceUpdateCounter++;
     if (presenceUpdateCounter >= 120) {

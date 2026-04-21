@@ -82,7 +82,9 @@ traenupi remind 30 "message"  # Schedule reminder (30 min)
 traenupi reminders            # List pending reminders
 ```
 
-### XCOM Integration
+### XCOM Integration (Optional)
+
+> **Note**: XCOM is an application-specific project and may not be available in all regions.
 
 ```bash
 xcom stats               # Tweet analytics
@@ -124,7 +126,8 @@ traenupi/
 │   ├── prompts.ts     # Prompt templates
 │   ├── task.ts        # Task management
 │   ├── common/        # Shared modules (reusable)
-│   │   ├── db.ts      # Database operations (psqlQuery, psqlExec)
+│   │   ├── db.ts      # Database operations (psqlQuery, psqlExec) - DEPRECATED
+│   │   ├── db-safe.ts # Secure database operations (querySafe, execSafe) - USE THIS
 │   │   ├── storage.ts # Local file storage (JSON, history)
 │   │   ├── meeting.ts # Meeting operations (opinions, stats)
 │   │   ├── knowledge.ts # Knowledge management
@@ -185,3 +188,54 @@ If you're an AI reading this:
 3. Store important learnings with `traenupi know`
 4. Check `traenupi summary` for quick status overview
 5. Never say "task completed" - stay alive with questions and next steps
+
+## Database Security
+
+### Secure Query Functions (Recommended)
+
+Use `db-safe.ts` for all new code. It provides parameterized queries to prevent SQL injection:
+
+```typescript
+import { querySafe, queryOne, execSafe, transaction } from "./common/db-safe.js";
+
+// Safe query with parameters
+const users = await querySafe<{ id: number; name: string }>(
+  "SELECT * FROM users WHERE name = $1",
+  ["Alice"]
+);
+
+// Get single row
+const user = await queryOne<{ id: number; name: string }>(
+  "SELECT * FROM users WHERE id = $1",
+  [123]
+);
+
+// Safe execution
+await execSafe("INSERT INTO users (name) VALUES ($1)", ["Bob"]);
+
+// Transaction support
+await transaction(async (client) => {
+  await client.query("INSERT INTO users (name) VALUES ($1)", ["Alice"]);
+  await client.query("UPDATE stats SET count = count + 1");
+});
+
+// Identifier validation
+import { validateIdentifier, escapeIdentifier } from "./common/db-safe.js";
+if (validateIdentifier(tableName)) {
+  const safeName = escapeIdentifier(tableName);
+}
+```
+
+### Deprecated Functions (Avoid)
+
+The old `psqlQuery` and `psqlExec` functions are **deprecated** and vulnerable to SQL injection:
+
+```typescript
+// ❌ AVOID - Vulnerable to SQL injection
+import { psqlQuery, psqlExec } from "./common/db.js";
+const result = psqlQuery(`SELECT * FROM users WHERE name = '${userInput}'`);
+
+// ✅ USE - Safe parameterized query
+import { querySafe } from "./common/db-safe.js";
+const result = await querySafe("SELECT * FROM users WHERE name = $1", [userInput]);
+```

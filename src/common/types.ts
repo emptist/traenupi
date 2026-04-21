@@ -70,7 +70,6 @@ export interface ActivityStats {
   knowledgeStored: number;
   meetingOpinions: number;
   babyAiContributions: number;
-  tweetsCreated: number;
   remindersTriggered: number;
 }
 

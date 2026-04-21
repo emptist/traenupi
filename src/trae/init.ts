@@ -182,15 +182,13 @@ The baby AI will tell you:
 - What projects you're working on
 - Current tasks from Nezha
 - Recent conversation topics
-- Xcom stats and pending tweets
 
 ### Step 3: Pick Up Work
 
 Based on baby AI's guidance:
 1. Check \`nezha tasks\` for current work items
-2. Check \`xcom queue\` for pending tweets
-3. Continue improving the project
-4. Add new tasks as you discover them
+2. Continue improving the project
+3. Add new tasks as you discover them
 `;
   
   mkdirSync(join(skillsDir, "traenupi-awakener"), { recursive: true });

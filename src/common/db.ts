@@ -25,6 +25,10 @@ function buildPsqlCommand(): string {
   return `psql -h ${dbConfig.host} -U ${dbConfig.user} -d ${dbConfig.database}`;
 }
 
+/**
+ * @deprecated Use querySafe from db-safe.ts instead. This function is vulnerable to SQL injection.
+ * @see db-safe.ts for secure parameterized queries
+ */
 export function psqlQuery(sql: string, options?: DbQueryOptions): string {
   try {
     const escapedSql = sql.replace(/'/g, "'\"'\"'");
@@ -41,6 +45,10 @@ export function psqlQuery(sql: string, options?: DbQueryOptions): string {
   }
 }
 
+/**
+ * @deprecated Use execSafe from db-safe.ts instead. This function is vulnerable to SQL injection.
+ * @see db-safe.ts for secure parameterized queries
+ */
 export function psqlExec(sql: string, options?: DbQueryOptions): boolean {
   try {
     const escapedSql = sql.replace(/'/g, "'\"'\"'");

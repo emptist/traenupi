@@ -22,7 +22,7 @@ export function askPi(question: string, history: ConversationItem[], quick: bool
 
     const output = execFileSync("pi", args, {
       encoding: "utf-8",
-      timeout: 45000,
+      timeout: 120000,
       maxBuffer: 1024 * 1024,
       killSignal: "SIGTERM",
     });

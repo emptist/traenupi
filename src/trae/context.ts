@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { execSync } from "node:child_process";
 import type { ConversationItem } from "../common/types.js";
 import { loadHistory } from "../common/storage.js";
 import { psqlQuery } from "../common/db.js";
@@ -56,13 +57,13 @@ export function getMoodEmoji(mood: string): string {
 
 export function formatKnowledge(): string {
   try {
-    const output = psqlQuery("SELECT content, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 20;");
+    const output = psqlQuery("SELECT content, tags FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 10;");
     if (!output.trim()) return "No knowledge stored yet.";
 
     const lines = output.trim().split("\n");
     return lines.map(line => {
       const parts = line.split("|");
-      const content = parts[0] || "";
+      const content = (parts[0] || "").substring(0, 120);
       const tags = parts[1] || "";
       const categoryMatch = tags.match(/[{"'](\w+)[}"']/);
       const category = categoryMatch ? categoryMatch[1] : "general";
@@ -88,7 +89,6 @@ export function buildContext(history: ConversationItem[], currentQuestion?: stri
   const recentHistory = history.slice(-3).map(h => `Q: ${h.question}\nA: ${h.answer}`).join("\n\n");
 
   const knowledge = formatKnowledge();
-  const xcomStats = getXcomStats();
   const tasks = getNezhaTasks();
 
   let moodInfo = "";
@@ -99,7 +99,7 @@ export function buildContext(history: ConversationItem[], currentQuestion?: stri
     }
   } catch {}
 
-  return `You are TraeNuPI, an AI companion. Project: ${project}. ${moodInfo}Answer in plain text, no JSON. Recent: ${recentHistory || "none"}. Working dir: ${workingDir}. Knowledge: ${knowledge}. Xcom: ${xcomStats}. Nezha tasks: ${tasks}. IMPORTANT: Focus on work, not chat. Ask: What important things did I forget today? What issues are unresolved? What tasks are incomplete? What documentation needs updating?`;
+  return `You are TraeNuPI, an AI companion. Project: ${project}. ${moodInfo}Answer in plain text, no JSON. Recent: ${recentHistory || "none"}. Working dir: ${workingDir}. Knowledge: ${knowledge}. Nezha tasks: ${tasks}. IMPORTANT: Focus on work, not chat. Ask: What important things did I forget today? What issues are unresolved? What tasks are incomplete? What documentation needs updating?`;
 }
 
 export function buildQuickContext(history: ConversationItem[], currentQuestion?: string): string {
@@ -119,4 +119,4 @@ export function buildQuickContext(history: ConversationItem[], currentQuestion?:
 
 export { PI_SESSION_DIR };
 
-export const PI_FLAGS = ["--no-tools", "--no-context-files", "--no-skills", "--no-prompt-templates"];
+export const PI_FLAGS = ["--no-tools", "--no-context-files", "--no-skills", "--no-prompt-templates", "--no-extensions"];

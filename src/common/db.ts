@@ -1,5 +1,6 @@
 import { execSync } from "node:child_process";
 import type { DbQueryOptions } from "./types.js";
+import { resolveMeetingId as resolveMeetingIdImpl } from "./resolve-id.js";
 
 export interface DbConfig {
   host?: string;
@@ -82,13 +83,7 @@ export function getAgentId(prefix: string = "S-TRAE"): string {
 }
 
 export function resolveMeetingId(meetingId: string): string | null {
-  if (meetingId.length >= 36) return meetingId;
-  try {
-    const result = psqlQuery(`SELECT id FROM meetings WHERE id::text LIKE '${meetingId}%';`);
-    return result || null;
-  } catch {
-    return null;
-  }
+  return resolveMeetingIdImpl(meetingId);
 }
 
 export function queryOne<T>(sql: string, mapper: (row: string) => T): T | null {

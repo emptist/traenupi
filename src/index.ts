@@ -8,6 +8,7 @@ import { createDriver } from "./driver.js";
 import { createTask, loadTask } from "./task.js";
 import type { DriverConfig } from "./common/types.js";
 import { psqlQuery, psqlExec, getAgentId, resolveMeetingId } from "./common/db.js";
+import { resolveId, resolveTaskId, resolveIssueId, resolveAgentId, resolveOpinionId, resolveSkillId, detectEntityType, validateShortId, type EntityType } from "./common/resolve-id.js";
 import { loadKnowledge, addKnowledge, getKnowledgeByCategory, loadKnowledgeLocal, type KnowledgeEntry } from "./common/knowledge.js";
 import { addOpinion, getMeetingOpinions, getMeetingInfo, getActiveMeetings } from "./common/meeting.js";
 import { 
@@ -37,7 +38,6 @@ import {
   detectMood, 
   getMoodEmoji, 
   formatKnowledge, 
-  getXcomStats, 
   getNezhaTasks,
   buildContext,
   buildQuickContext,
@@ -49,6 +49,7 @@ import { addReminder, checkReminders, listReminders, clearTriggeredReminders } f
 import { recordMood, showMoodHistory } from "./trae/mood.js";
 import { crossMeetingSearch, recommendMeetings, autoSummarizeMeeting, showAllAIs, showMeetingTemplates, createMeetingFromTemplate } from "./trae/meeting-utils.js";
 import { addBookmark, listBookmarks } from "./trae/bookmarks.js";
+import { scanSkills, autoImproveTriggerPhrases, autoImproveDescription, scoreSkillCompleteness, identifyGaps, generateTriggerPhrases, buildSkillImprovementPrompt, parseSkillImprovementResponse, applySkillImprovement, filterSkillsForBatch, type SkillScanResult, type SkillRecord, type BatchImproveOptions, type BatchImproveResult, type BatchImproveSummary } from "./trae/skill-improver.js";
 import { checkMeetingNotifications, checkBabyAIParticipation, runDaemon, showStatus } from "./trae/daemon.js";
 import { initProject } from "./trae/init.js";
 
@@ -81,7 +82,6 @@ AI SESSION ONBOARDING:
   start                   Initialize a new AI session (RUN THIS FIRST!)
                           - Checks/starts daemon
                           - Loads knowledge from Nezha DB
-                          - Shows xcom status
                           - Asks baby AI for context
                           - Auto-creates .trae folder if missing
 
@@ -117,6 +117,13 @@ COMMANDS:
   tables [name]           Show database table documentation
                           Without name: list all tables
                           With name: show detailed info
+  resolve <id> [type]     Resolve short ID to full UUID
+                          Types: meeting, task, issue, agent, opinion, skill, memory, auto
+  skill scan              Scan all skills for gaps
+  skill score             Show skill completeness scores
+  skill improve <id>      Auto-improve a skill (trigger phrases, tags)
+  skill ai-improve <id>   AI-powered improvement (description, instructions)
+  skill triggers <id>     Auto-generate trigger phrases
 
 MEETING COMMANDS:
   meeting                 List active meetings
@@ -834,7 +841,486 @@ Welcome! You're now working with TraeNuPI, your AI companion.
     console.log("\n──────────────────────────────────────────────────");
     return;
   }
-  
+
+  if (command === "skill") {
+    const subCommand = args[1];
+
+    if (!subCommand || subCommand === "help") {
+      console.log(`traenupi skill - Skill system management
+
+USAGE:
+  traenupi skill scan              Scan all skills for gaps
+  traenupi skill improve <id>      Auto-improve a skill (trigger phrases, tags)
+  traenupi skill ai-improve <id>   AI-powered improvement (description, instructions)
+  traenupi skill ai-improve --batch [--below N] [--limit N] [--dry-run]
+  traenupi skill triggers <id>     Auto-generate trigger phrases
+  traenupi skill score             Show skill completeness scores
+  traenupi skill help              Show this help
+
+DESCRIPTION:
+  The skill auto-improvement workflow detects gaps in skills,
+  suggests improvements, and auto-populates missing fields.
+
+  - 'improve' auto-generates trigger_phrases and tags from skill name
+  - 'ai-improve' uses the baby AI to generate description, instructions,
+    quick_start, and examples for skills missing those fields
+  - 'ai-improve --batch' processes multiple skills at once
+
+BATCH OPTIONS:
+  --below N    Only improve skills with score below N% (default: 50)
+  --limit N    Process at most N skills (default: 10)
+  --dry-run    Preview what would be improved without making changes
+
+EXAMPLES:
+  traenupi skill scan
+  traenupi skill improve 38d8857f
+  traenupi skill ai-improve 38d8857f
+  traenupi skill ai-improve --batch
+  traenupi skill ai-improve --batch --below 30 --limit 5
+  traenupi skill ai-improve --batch --dry-run
+  traenupi skill triggers 38d8857f
+  traenupi skill score
+`);
+      return;
+    }
+
+    if (subCommand === "scan") {
+      console.log("╔════════════════════════════════════════════╗");
+      console.log("║     Skill Gap Scanner                      ║");
+      console.log("╚════════════════════════════════════════════╝\n");
+
+      const results = scanSkills();
+      if (results.length === 0) {
+        console.log("[TRAENUPI] No skills found in database.");
+        return;
+      }
+
+      const withGaps = results.filter(r => r.gaps.length > 0);
+      const complete = results.filter(r => r.gaps.length === 0);
+
+      console.log(`📊 Summary: ${results.length} skills scanned`);
+      console.log(`   ✅ Complete: ${complete.length}`);
+      console.log(`   ⚠️  With gaps: ${withGaps.length}\n`);
+
+      if (withGaps.length > 0) {
+        console.log("⚠️  Skills with gaps:\n");
+        for (const r of withGaps) {
+          const scoreBar = "█".repeat(Math.floor(r.score / 10)) + "░".repeat(10 - Math.floor(r.score / 10));
+          console.log(`  ${r.skill.name} [${scoreBar}] ${r.score}%`);
+          for (const gap of r.gaps) {
+            const icon = gap.severity === "critical" ? "🔴" : gap.severity === "high" ? "🟠" : gap.severity === "medium" ? "🟡" : "🔵";
+            const fixable = gap.autoFixable ? " (auto-fixable)" : "";
+            console.log(`    ${icon} ${gap.field}: ${gap.message}${fixable}`);
+          }
+          console.log("");
+        }
+      }
+
+      if (complete.length > 0) {
+        console.log("✅ Complete skills:");
+        for (const r of complete) {
+          console.log(`  ${r.skill.name} (${r.score}%)`);
+        }
+      }
+
+      console.log("\n──────────────────────────────────────────────────");
+      return;
+    }
+
+    if (subCommand === "score") {
+      const results = scanSkills();
+      if (results.length === 0) {
+        console.log("[TRAENUPI] No skills found in database.");
+        return;
+      }
+
+      console.log("╔════════════════════════════════════════════╗");
+      console.log("║     Skill Completeness Scores              ║");
+      console.log("╚════════════════════════════════════════════╝\n");
+
+      const sorted = [...results].sort((a, b) => a.score - b.score);
+      for (const r of sorted) {
+        const scoreBar = "█".repeat(Math.floor(r.score / 10)) + "░".repeat(10 - Math.floor(r.score / 10));
+        const icon = r.score >= 80 ? "✅" : r.score >= 50 ? "⚠️" : "❌";
+        console.log(`  ${icon} ${r.skill.name.padEnd(30)} [${scoreBar}] ${r.score}%`);
+      }
+
+      const avg = Math.round(results.reduce((s, r) => s + r.score, 0) / results.length);
+      console.log(`\n  Average: ${avg}%`);
+      console.log("\n──────────────────────────────────────────────────");
+      return;
+    }
+
+    if (subCommand === "triggers") {
+      const skillId = args[2];
+      if (!skillId) {
+        console.log("[ERROR] Usage: traenupi skill triggers <skill_id>");
+        return;
+      }
+
+      const { resolveSkillId } = await import("./common/resolve-id.js");
+      const fullId = resolveSkillId(skillId);
+      if (!fullId) {
+        console.log(`[ERROR] Skill not found: ${skillId}`);
+        return;
+      }
+
+      const success = autoImproveTriggerPhrases(fullId);
+      if (success) {
+        console.log(`[TRAENUPI] ✅ Trigger phrases auto-generated for skill ${fullId.substring(0, 8)}`);
+      } else {
+        console.log(`[TRAENUPI] ❌ Failed to generate trigger phrases for skill ${fullId.substring(0, 8)}`);
+      }
+      return;
+    }
+
+    if (subCommand === "improve") {
+      const skillId = args[2];
+      if (!skillId) {
+        console.log("[ERROR] Usage: traenupi skill improve <skill_id>");
+        return;
+      }
+
+      const { resolveSkillId } = await import("./common/resolve-id.js");
+      const fullId = resolveSkillId(skillId);
+      if (!fullId) {
+        console.log(`[ERROR] Skill not found: ${skillId}`);
+        return;
+      }
+
+      console.log(`[TRAENUPI] Auto-improving skill ${fullId.substring(0, 8)}...`);
+
+      const output = psqlQuery(
+        `SELECT name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE id = '${fullId}';`,
+        { silent: true }
+      );
+
+      if (!output) {
+        console.log("[ERROR] Could not read skill data.");
+        return;
+      }
+
+      const parts = output.split("|");
+      const parseArray = (raw: string): string[] | null => {
+        if (!raw || raw.trim() === "") return null;
+        const cleaned = raw.replace(/[{}"]/g, "");
+        if (!cleaned) return null;
+        return cleaned.split(",").map(s => s.trim()).filter(Boolean);
+      };
+
+      const skill = {
+        id: fullId,
+        name: parts[0],
+        description: parts[1] || null,
+        trigger_phrases: parseArray(parts[2]),
+        anti_patterns: parseArray(parts[3]),
+        quick_start: parts[4] || null,
+        examples: parseArray(parts[5]),
+        content: null as Record<string, unknown> | null,
+        instructions: parts[7] || null,
+        category: parts[8] || null,
+        tags: parseArray(parts[9]),
+      };
+
+      const gaps = identifyGaps(skill);
+      const beforeScore = scoreSkillCompleteness(skill);
+      let improvements = 0;
+
+      if (gaps.some(g => g.field === "trigger_phrases")) {
+        const phrases = generateTriggerPhrases(skill);
+        if (phrases.length > 0) {
+          const phrasesSql = `{${phrases.map(p => `"${p}"`).join(",")}}`;
+          psqlExec(`UPDATE skills SET trigger_phrases = '${phrasesSql}' WHERE id = '${fullId}';`, { silent: true });
+          console.log(`   ✅ Generated ${phrases.length} trigger phrases: ${phrases.slice(0, 5).join(", ")}${phrases.length > 5 ? "..." : ""}`);
+          improvements++;
+        }
+      }
+
+      if (gaps.some(g => g.field === "tags") && skill.trigger_phrases) {
+        const tags = [...new Set([...(skill.trigger_phrases ?? []), ...skill.name.split(/[-_]/)])];
+        const tagsSql = `{${tags.map(t => `"${t}"`).join(",")}}`;
+        psqlExec(`UPDATE skills SET tags = '${tagsSql}' WHERE id = '${fullId}';`, { silent: true });
+        console.log(`   ✅ Generated ${tags.length} tags from trigger phrases`);
+        improvements++;
+      }
+
+      if (improvements === 0) {
+        console.log(`   ℹ️  No auto-fixable gaps found. Score: ${beforeScore}%`);
+      } else {
+        const afterScore = beforeScore + improvements * 10;
+        console.log(`\n   📊 Score: ${beforeScore}% → ${Math.min(afterScore, 100)}% (+${improvements * 10})`);
+      }
+
+      const remainingGaps = gaps.filter(g => g.autoFixable && g.field !== "trigger_phrases" && g.field !== "tags");
+      if (remainingGaps.length > 0) {
+        console.log(`\n   💡 Remaining gaps (need manual or AI input):`);
+        for (const gap of remainingGaps) {
+          console.log(`      - ${gap.field}: ${gap.message}`);
+        }
+      }
+
+      return;
+    }
+
+    if (subCommand === "ai-improve") {
+      const isBatch = args.includes("--batch");
+      const dryRun = args.includes("--dry-run");
+      
+      const getFlagValue = (flag: string, defaultValue: number): number => {
+        const idx = args.indexOf(flag);
+        if (idx === -1 || idx + 1 >= args.length) return defaultValue;
+        const val = parseInt(args[idx + 1], 10);
+        return isNaN(val) ? defaultValue : val;
+      };
+
+      const threshold = getFlagValue("--below", 50);
+      const limit = getFlagValue("--limit", 10);
+
+      if (isBatch) {
+        console.log("╔════════════════════════════════════════════╗");
+        console.log("║     Batch AI Skill Improvement             ║");
+        console.log("╚════════════════════════════════════════════╝\n");
+
+        console.log(`📊 Settings: threshold=${threshold}%, limit=${limit}, dryRun=${dryRun}\n`);
+
+        const allSkills = scanSkills();
+        const toImprove = filterSkillsForBatch(allSkills, { threshold, limit });
+
+        if (toImprove.length === 0) {
+          console.log("[TRAENUPI] No skills found matching criteria.");
+          return;
+        }
+
+        console.log(`📋 Found ${toImprove.length} skills to improve:\n`);
+        for (const s of toImprove) {
+          console.log(`   - ${s.skill.name} (${s.score}%)`);
+        }
+        console.log("");
+
+        if (dryRun) {
+          console.log("🔍 Dry run mode - no changes will be made.");
+          console.log(`   Would improve ${toImprove.length} skills.`);
+          return;
+        }
+
+        const results: BatchImproveResult[] = [];
+        let succeeded = 0;
+        let failed = 0;
+
+        for (let i = 0; i < toImprove.length; i++) {
+          const s = toImprove[i];
+          const skillId = s.skill.id;
+          const skillName = s.skill.name;
+
+          console.log(`\n[${i + 1}/${toImprove.length}] Processing: ${skillName} (${s.score}%)`);
+
+          const prompt = buildSkillImprovementPrompt(s.skill, s.gaps);
+          if (!prompt) {
+            console.log(`   ⏭️  Skipped - no AI-fixable gaps`);
+            continue;
+          }
+
+          try {
+            const { askPi } = await import("./trae/baby-ai.js");
+            const history: ConversationItem[] = [];
+            const response = askPi(prompt, history, true, false);
+
+            if (response.startsWith("[Error") || response.startsWith("[Pi timed out")) {
+              console.log(`   ❌ Failed: ${response}`);
+              results.push({
+                skillId,
+                skillName,
+                beforeScore: s.score,
+                afterScore: s.score,
+                fieldsGenerated: [],
+                error: response,
+              });
+              failed++;
+              continue;
+            }
+
+            const improvement = parseSkillImprovementResponse(response);
+            const applied = applySkillImprovement(skillId, improvement);
+
+            if (applied) {
+              const fields: string[] = [];
+              if (improvement.description) fields.push("description");
+              if (improvement.instructions) fields.push("instructions");
+              if (improvement.quick_start) fields.push("quick_start");
+              if (improvement.examples) fields.push("examples");
+
+              const afterScore = scoreSkillCompleteness({
+                ...s.skill,
+                description: improvement.description ?? s.skill.description,
+                instructions: improvement.instructions ?? s.skill.instructions,
+                quick_start: improvement.quick_start ?? s.skill.quick_start,
+                examples: improvement.examples ?? s.skill.examples,
+              });
+
+              console.log(`   ✅ Generated: ${fields.join(", ")}`);
+              console.log(`   📊 Score: ${s.score}% → ${afterScore}% (+${afterScore - s.score})`);
+
+              results.push({
+                skillId,
+                skillName,
+                beforeScore: s.score,
+                afterScore,
+                fieldsGenerated: fields,
+              });
+              succeeded++;
+            } else {
+              console.log(`   ⚠️  Could not parse AI response`);
+              results.push({
+                skillId,
+                skillName,
+                beforeScore: s.score,
+                afterScore: s.score,
+                fieldsGenerated: [],
+                error: "Could not parse response",
+              });
+              failed++;
+            }
+          } catch (e) {
+            const errorMsg = e instanceof Error ? e.message : String(e);
+            console.log(`   ❌ Error: ${errorMsg}`);
+            results.push({
+              skillId,
+              skillName,
+              beforeScore: s.score,
+              afterScore: s.score,
+              fieldsGenerated: [],
+              error: errorMsg,
+            });
+            failed++;
+          }
+        }
+
+        console.log("\n──────────────────────────────────────────────────");
+        console.log("📈 Batch Improvement Summary\n");
+        console.log(`   Total: ${toImprove.length}`);
+        console.log(`   ✅ Succeeded: ${succeeded}`);
+        console.log(`   ❌ Failed: ${failed}`);
+
+        if (results.length > 0) {
+          const avgBefore = Math.round(results.reduce((s, r) => s + r.beforeScore, 0) / results.length);
+          const avgAfter = Math.round(results.reduce((s, r) => s + r.afterScore, 0) / results.length);
+          console.log(`   📊 Avg Score: ${avgBefore}% → ${avgAfter}% (+${avgAfter - avgBefore})`);
+        }
+        console.log("──────────────────────────────────────────────────");
+        return;
+      }
+
+      const skillId = args[2];
+      if (!skillId || skillId.startsWith("--")) {
+        console.log("[ERROR] Usage: traenupi skill ai-improve <skill_id>");
+        console.log("        Or:    traenupi skill ai-improve --batch [--below N] [--limit N] [--dry-run]");
+        return;
+      }
+
+      const { resolveSkillId } = await import("./common/resolve-id.js");
+      const fullId = resolveSkillId(skillId);
+      if (!fullId) {
+        console.log(`[ERROR] Skill not found: ${skillId}`);
+        return;
+      }
+
+      console.log(`[TRAENUPI] 🤖 AI-improving skill ${fullId.substring(0, 8)}...`);
+
+      const output = psqlQuery(
+        `SELECT name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE id = '${fullId}';`,
+        { silent: true }
+      );
+
+      if (!output) {
+        console.log("[ERROR] Could not read skill data.");
+        return;
+      }
+
+      const parts = output.split("|");
+      const parseArray = (raw: string): string[] | null => {
+        if (!raw || raw.trim() === "") return null;
+        const cleaned = raw.replace(/[{}"]/g, "");
+        if (!cleaned) return null;
+        return cleaned.split(",").map((s: string) => s.trim()).filter(Boolean);
+      };
+
+      const skill: SkillRecord = {
+        id: fullId,
+        name: parts[0],
+        description: parts[1] || null,
+        trigger_phrases: parseArray(parts[2]),
+        anti_patterns: parseArray(parts[3]),
+        quick_start: parts[4] || null,
+        examples: parseArray(parts[5]),
+        content: null,
+        instructions: parts[7] || null,
+        category: parts[8] || null,
+        tags: parseArray(parts[9]),
+      };
+
+      const gaps = identifyGaps(skill);
+      const beforeScore = scoreSkillCompleteness(skill);
+      const prompt = buildSkillImprovementPrompt(skill, gaps);
+
+      if (!prompt) {
+        console.log(`   ✅ Skill is already complete! Score: ${beforeScore}%`);
+        return;
+      }
+
+      console.log(`   📝 Asking baby AI to generate missing fields...`);
+      const aiFields = gaps.filter(g => ["description", "instructions", "quick_start", "examples"].includes(g.field));
+      console.log(`   Missing AI-fixable fields: ${aiFields.map(g => g.field).join(", ")}`);
+
+      try {
+        const { askPi } = await import("./trae/baby-ai.js");
+        const history: ConversationItem[] = [];
+        const response = askPi(prompt, history, true, false);
+
+        if (response.startsWith("[Error") || response.startsWith("[Pi timed out")) {
+          console.log(`   ❌ Baby AI failed: ${response}`);
+          return;
+        }
+
+        const improvement = parseSkillImprovementResponse(response);
+        const applied = applySkillImprovement(fullId, improvement);
+
+        if (applied) {
+          const appliedFields: string[] = [];
+          if (improvement.description) appliedFields.push("description");
+          if (improvement.instructions) appliedFields.push("instructions");
+          if (improvement.quick_start) appliedFields.push("quick_start");
+          if (improvement.examples) appliedFields.push("examples");
+
+          console.log(`   ✅ AI generated: ${appliedFields.join(", ")}`);
+
+          if (improvement.description) console.log(`      📄 Description: ${improvement.description.substring(0, 80)}...`);
+          if (improvement.instructions) console.log(`      📋 Instructions: ${improvement.instructions.substring(0, 80)}...`);
+          if (improvement.quick_start) console.log(`      🚀 Quick start: ${improvement.quick_start}`);
+          if (improvement.examples) console.log(`      💡 Examples: ${improvement.examples.join("; ")}`);
+
+          const afterScore = scoreSkillCompleteness({
+            ...skill,
+            description: improvement.description ?? skill.description,
+            instructions: improvement.instructions ?? skill.instructions,
+            quick_start: improvement.quick_start ?? skill.quick_start,
+            examples: improvement.examples ?? skill.examples,
+          });
+          console.log(`\n   📊 Score: ${beforeScore}% → ${afterScore}% (${afterScore > beforeScore ? "+" : ""}${afterScore - beforeScore})`);
+        } else {
+          console.log(`   ⚠️  AI response could not be parsed. Raw response:`);
+          console.log(`   ${response.substring(0, 200)}`);
+        }
+      } catch (e) {
+        console.log(`   ❌ Error calling baby AI: ${e instanceof Error ? e.message : String(e)}`);
+      }
+
+      return;
+    }
+
+    console.log("[ERROR] Unknown skill command. Use: traenupi skill help");
+    return;
+  }
+
   if (command === "daily" || command === "today") {
     console.log("╔════════════════════════════════════════════╗");
     console.log("║     Daily Activity Summary                 ║");
@@ -905,11 +1391,11 @@ Welcome! You're now working with TraeNuPI, your AI companion.
     
     const traeDir = join(process.cwd(), ".trae");
     if (!existsSync(traeDir)) {
-      console.log("[0/5] Initializing .trae folder for this project...");
+      console.log("[0/4] Initializing .trae folder for this project...");
       initProject(process.cwd());
     }
     
-    console.log("\n[1/5] Checking daemon status...");
+    console.log("\n[1/4] Checking daemon status...");
     try {
       const stateFile = join(homedir(), ".traenupi", "state.json");
       if (existsSync(stateFile)) {
@@ -934,19 +1420,11 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log("[DAEMON] Error checking status: " + (e instanceof Error ? e.message : String(e)));
     }
     
-    console.log("\n[2/5] Loading knowledge from Nezha DB...");
+    console.log("\n[2/4] Loading knowledge from Nezha DB...");
     const knowledge = loadKnowledge();
     console.log("[KNOWLEDGE] " + knowledge.length + " entries loaded");
     
-    console.log("\n[3/5] Checking xcom status...");
-    try {
-      const xcomStats = getXcomStats();
-      console.log("[XCOM] " + xcomStats.split("\n")[0]);
-    } catch {
-      console.log("[XCOM] Not configured");
-    }
-    
-    console.log("\n[4/5] Checking Nezha tasks...");
+    console.log("\n[3/4] Checking Nezha tasks...");
     try {
       const tasks = execSync("nezha tasks", { encoding: "utf-8", timeout: 5000 });
       const taskCount = (tasks.match(/│/g) || []).length;
@@ -955,7 +1433,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log("[NEZHA] Not available");
     }
     
-    console.log("\n[5/5] Asking baby AI for context...");
+    console.log("\n[4/4] Asking baby AI for context...");
     console.log("──────────────────────────────────────────────────");
     tellmeSync("I'm a new session. What should I work on?");
     return;
@@ -1761,6 +2239,70 @@ Welcome! You're now working with TraeNuPI, your AI companion.
     return;
   }
   
+  if (command === "resolve") {
+    const shortId = args[1];
+    const entityTypeArg = args[2] as (EntityType | "auto") | undefined;
+
+    if (!shortId) {
+      console.log(`traenupi resolve - Resolve short IDs to full UUIDs
+
+USAGE:
+  traenupi resolve <short_id> [entity_type]
+  traenupi resolve <short_id> auto
+
+ENTITY TYPES:
+  meeting   Search in meetings table
+  task      Search in tasks table
+  issue     Search in issues table
+  agent     Search in agent_identity table
+  opinion   Search in meeting_opinions table
+  skill     Search in skills table
+  memory    Search in memory table
+  auto      Auto-detect entity type (default)
+
+EXAMPLES:
+  traenupi resolve 1d45fcd0
+  traenupi resolve 1d45fcd0 meeting
+  traenupi resolve 1d45fcd0 auto
+`);
+      return;
+    }
+
+    if (!validateShortId(shortId)) {
+      console.log(`[ERROR] Invalid ID format: "${shortId}". Must be 4+ hex characters or a full UUID.`);
+      return;
+    }
+
+    if (entityTypeArg && entityTypeArg !== "auto" && !["meeting", "task", "issue", "agent", "opinion", "skill", "memory"].includes(entityTypeArg)) {
+      console.log(`[ERROR] Unknown entity type: "${entityTypeArg}". Use: meeting, task, issue, agent, opinion, skill, memory, or auto.`);
+      return;
+    }
+
+    if (!entityTypeArg || entityTypeArg === "auto") {
+      const result = detectEntityType(shortId);
+      if (!result) {
+        console.log(`[TRAENUPI] No match found for "${shortId}" in any table.`);
+        return;
+      }
+      console.log(`[TRAENUPI] Resolved: ${shortId}`);
+      console.log(`   Full ID:    ${result.id}`);
+      console.log(`   Entity:     ${result.entityType}`);
+      console.log(`   Ambiguous:  ${result.ambiguous ? "Yes (" + result.matches + " matches)" : "No"}`);
+      return;
+    }
+
+    const result = resolveId(shortId, entityTypeArg, { allowAmbiguous: true });
+    if (!result) {
+      console.log(`[TRAENUPI] No match found for "${shortId}" in ${entityTypeArg} table.`);
+      return;
+    }
+    console.log(`[TRAENUPI] Resolved: ${shortId}`);
+    console.log(`   Full ID:    ${result.id}`);
+    console.log(`   Entity:     ${result.entityType}`);
+    console.log(`   Ambiguous:  ${result.ambiguous ? "Yes (" + result.matches + " matches)" : "No"}`);
+    return;
+  }
+
   if (command === "stop") {
     ensureDir();
     if (existsSync(STATE_FILE)) {

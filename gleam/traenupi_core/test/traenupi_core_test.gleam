@@ -368,3 +368,111 @@ pub fn property_category_roundtrip_test() {
   }, default_num_tests)
   check(result) |> should.equal(True)
 }
+
+import traenupi_core/config.{
+  StringValue, IntValue,
+  ConfigOk, ConfigError,
+  parse, get_string, get_int, get_bool, get_list,
+  get_string_default, get_int_default, get_bool_default,
+  set, has_key, to_string, merge, from_list, empty,
+} as config
+
+pub fn config_parse_empty_test() {
+  let result = parse("")
+  case result {
+    ConfigOk(value: cfg) -> should.equal(has_key(cfg, "any"), False)
+    ConfigError(error: e) -> should.equal(config.error_to_string(e), "should not error")
+  }
+}
+
+pub fn config_parse_simple_test() {
+  let result = parse("name = test\nvalue = 123")
+  case result {
+    ConfigOk(value: cfg) -> {
+      should.equal(has_key(cfg, "name"), True)
+      should.equal(has_key(cfg, "value"), True)
+    }
+    ConfigError(error: e) -> should.equal(config.error_to_string(e), "should not error")
+  }
+}
+
+pub fn config_parse_comments_test() {
+  let result = parse("# this is a comment\nkey = value\n# another comment")
+  case result {
+    ConfigOk(value: cfg) -> {
+      should.equal(has_key(cfg, "key"), True)
+      should.equal(has_key(cfg, "this"), False)
+    }
+    ConfigError(error: e) -> should.equal(config.error_to_string(e), "should not error")
+  }
+}
+
+pub fn config_parse_types_test() {
+  let result = parse("str = hello\nnum = 42\nflag = true\nitems = [a, b, c]")
+  case result {
+    ConfigOk(value: cfg) -> {
+      case get_string(cfg, "str") {
+        ConfigOk(value: v) -> should.equal(v, "hello")
+        ConfigError(_) -> should.equal(True, False)
+      }
+      case get_int(cfg, "num") {
+        ConfigOk(value: v) -> should.equal(v, 42)
+        ConfigError(_) -> should.equal(True, False)
+      }
+      case get_bool(cfg, "flag") {
+        ConfigOk(value: v) -> should.equal(v, True)
+        ConfigError(_) -> should.equal(True, False)
+      }
+      case get_list(cfg, "items") {
+        ConfigOk(value: v) -> should.equal(v, ["a", "b", "c"])
+        ConfigError(_) -> should.equal(True, False)
+      }
+    }
+    ConfigError(error: e) -> should.equal(config.error_to_string(e), "should not error")
+  }
+}
+
+pub fn config_get_missing_key_test() {
+  let cfg = empty()
+  case get_string(cfg, "missing") {
+    ConfigOk(value: _) -> should.equal(True, False)
+    ConfigError(error: e) -> should.equal(config.error_to_string(e), "Missing required key: missing")
+  }
+}
+
+pub fn config_get_default_test() {
+  let cfg = empty()
+  should.equal(get_string_default(cfg, "name", "default"), "default")
+  should.equal(get_int_default(cfg, "count", 10), 10)
+  should.equal(get_bool_default(cfg, "flag", True), True)
+}
+
+pub fn config_set_test() {
+  let cfg = empty()
+  let cfg2 = set(cfg, "key", StringValue(value: "value"))
+  should.equal(has_key(cfg2, "key"), True)
+  case get_string(cfg2, "key") {
+    ConfigOk(value: v) -> should.equal(v, "value")
+    ConfigError(_) -> should.equal(True, False)
+  }
+}
+
+pub fn config_merge_test() {
+  let base = from_list([#("a", StringValue(value: "1")), #("b", IntValue(value: 2))])
+  let override = from_list([#("b", IntValue(value: 3)), #("c", StringValue(value: "4"))])
+  let merged = merge(base, override)
+  should.equal(has_key(merged, "a"), True)
+  should.equal(has_key(merged, "b"), True)
+  should.equal(has_key(merged, "c"), True)
+  case get_int(merged, "b") {
+    ConfigOk(value: v) -> should.equal(v, 3)
+    ConfigError(_) -> should.equal(True, False)
+  }
+}
+
+pub fn config_to_string_test() {
+  let cfg = from_list([#("name", StringValue(value: "test")), #("count", IntValue(value: 5))])
+  let str = to_string(cfg)
+  should.equal(string.contains(str, "name"), True)
+  should.equal(string.contains(str, "count"), True)
+}

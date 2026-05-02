@@ -2,6 +2,7 @@ import gleeunit
 import gleeunit/should
 import gleam/list
 import gleam/option.{Some, None}
+import gleam/string
 
 import traenupi_core.{Action, Verify, Reflect, AntiWeakness, Checkpoint, Completion}
 import traenupi_core/utils.{
@@ -132,4 +133,76 @@ pub fn advance_step_test() {
 pub fn is_task_complete_no_task_test() {
   let state = new_driver_state()
   should.equal(is_task_complete(state), True)
+}
+
+import traenupi_core/cli.{
+  Help, Version, Status, Tellme, Know,
+  Search, Remind, Review, Tasks, Unknown, ParseOk, ParseError,
+  parse_args, is_valid_command, get_help_text,
+}
+
+pub fn parse_args_help_test() {
+  parse_args([]) |> should.equal(ParseOk(Help))
+  parse_args(["help"]) |> should.equal(ParseOk(Help))
+  parse_args(["--help"]) |> should.equal(ParseOk(Help))
+  parse_args(["-h"]) |> should.equal(ParseOk(Help))
+}
+
+pub fn parse_args_version_test() {
+  parse_args(["version"]) |> should.equal(ParseOk(Version))
+  parse_args(["--version"]) |> should.equal(ParseOk(Version))
+  parse_args(["-v"]) |> should.equal(ParseOk(Version))
+}
+
+pub fn parse_args_status_test() {
+  parse_args(["status"]) |> should.equal(ParseOk(Status))
+}
+
+pub fn parse_args_tellme_test() {
+  parse_args(["tellme"]) |> should.equal(ParseError("tellme requires a question argument"))
+  parse_args(["tellme", "hello"]) |> should.equal(ParseOk(Tellme(question: "hello")))
+  parse_args(["tellme", "what", "is", "this"]) |> should.equal(ParseOk(Tellme(question: "what is this")))
+}
+
+pub fn parse_args_know_test() {
+  parse_args(["know"]) |> should.equal(ParseError("know requires key and value arguments"))
+  parse_args(["know", "key1"]) |> should.equal(ParseError("know requires a value argument"))
+  parse_args(["know", "key1", "value1"]) |> should.equal(ParseOk(Know(key: "key1", value: "value1")))
+}
+
+pub fn parse_args_search_test() {
+  parse_args(["search"]) |> should.equal(ParseError("search requires a query argument"))
+  parse_args(["search", "test"]) |> should.equal(ParseOk(Search(query: "test")))
+}
+
+pub fn parse_args_remind_test() {
+  parse_args(["remind"]) |> should.equal(ParseError("remind requires minutes and message arguments"))
+  parse_args(["remind", "abc", "msg"]) |> should.equal(ParseError("remind: first argument must be a number (minutes)"))
+  parse_args(["remind", "5"]) |> should.equal(ParseError("remind requires a message argument"))
+  parse_args(["remind", "5", "test", "msg"]) |> should.equal(ParseOk(Remind(minutes: 5, message: "test msg")))
+}
+
+pub fn parse_args_review_test() {
+  parse_args(["review"]) |> should.equal(ParseError("review requires a review_id argument"))
+  parse_args(["review", "abc123"]) |> should.equal(ParseOk(Review(review_id: "abc123", action: None)))
+  parse_args(["review", "abc123", "complete"]) |> should.equal(ParseOk(Review(review_id: "abc123", action: Some("complete"))))
+}
+
+pub fn parse_args_tasks_test() {
+  parse_args(["tasks"]) |> should.equal(ParseOk(Tasks))
+}
+
+pub fn parse_args_unknown_test() {
+  parse_args(["foobar", "arg1", "arg2"]) |> should.equal(ParseOk(Unknown(command: "foobar", args: ["arg1", "arg2"])))
+}
+
+pub fn is_valid_command_test() {
+  is_valid_command("help") |> should.equal(True)
+  is_valid_command("tellme") |> should.equal(True)
+  is_valid_command("unknown") |> should.equal(False)
+}
+
+pub fn get_help_text_test() {
+  let help = get_help_text()
+  should.equal(string.contains(help, "tellme"), True)
 }

@@ -49,6 +49,15 @@ import {
   encode_knowledge_entry,
 } from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/json.mjs";
 
+import {
+  parse_args,
+  command_to_string,
+  is_valid_command,
+  get_help_text,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/cli.mjs";
+
+import { toList } from "../../gleam/traenupi_core/build/dev/javascript/gleam_stdlib/gleam.mjs";
+
 export function demoGleamIntegration(): void {
   console.log("=== Gleam + TypeScript Integration Demo ===\n");
 
@@ -114,6 +123,27 @@ export function demoGleamIntegration(): void {
   console.log(`\n${ansi_reset}Demo complete!`);
 }
 
+export function demoCliParsing(): void {
+  console.log("=== CLI Parsing Demo ===\n");
+
+  const testCases = [
+    [],
+    ["help"],
+    ["tellme", "what", "is", "this"],
+    ["know", "key1", "value1"],
+    ["remind", "5", "test message"],
+    ["invalid", "arg1", "arg2"],
+  ];
+
+  for (const args of testCases) {
+    const result = parse_args(toList(args));
+    console.log(`  ${JSON.stringify(args)} -> ${JSON.stringify(result)}`);
+  }
+
+  console.log("\nHelp text:");
+  console.log(get_help_text());
+}
+
 export {
   PromptCategory$Action,
   PromptCategory$Verify,
@@ -154,4 +184,8 @@ export {
   encode_driver_state,
   encode_task,
   encode_knowledge_entry,
+  parse_args,
+  command_to_string,
+  is_valid_command,
+  get_help_text,
 };

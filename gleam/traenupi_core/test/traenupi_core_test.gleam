@@ -1387,3 +1387,260 @@ pub fn resultx_fold_option_test() {
   should.equal(fold_option(Some(42), 0, fn(x, acc) { x + acc }), 42)
   should.equal(fold_option(None, 0, fn(x, acc) { x + acc }), 0)
 }
+
+import traenupi_core/jsonx.{
+  JsonNull, JsonBool, JsonNumber, JsonString, JsonArray, JsonObject,
+  null, bool, int, float, string, array, object, nullable,
+  json_value_type, is_null, is_bool, is_number, is_string, is_array, is_object,
+  json_to_bool, json_to_number, json_to_int, json_to_string, json_to_array, json_to_object,
+  json_to_option, get_field, get_field_as, get_index, get_index_as,
+  map_json_array, filter_json_array, keys, values,
+  merge_objects, set_field, remove_field,
+  array_length, object_length, append_to_array, prepend_to_array,
+  path_get, path_set, encode,
+}
+
+pub fn jsonx_null_test() {
+  should.equal(null(), JsonNull)
+}
+
+pub fn jsonx_bool_test() {
+  should.equal(bool(True), JsonBool(True))
+  should.equal(bool(False), JsonBool(False))
+}
+
+pub fn jsonx_number_test() {
+  should.equal(int(42), JsonNumber(42.0))
+  should.equal(float(3.14), JsonNumber(3.14))
+}
+
+pub fn jsonx_string_test() {
+  should.equal(string("hello"), JsonString("hello"))
+}
+
+pub fn jsonx_array_test() {
+  should.equal(array([int(1), int(2), int(3)]), JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)]))
+}
+
+pub fn jsonx_object_test() {
+  let obj = object([#("name", string("Alice")), #("age", int(30))])
+  case obj {
+    JsonObject(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_nullable_test() {
+  should.equal(nullable(Some(string("hello"))), JsonString("hello"))
+  should.equal(nullable(None), JsonNull)
+}
+
+pub fn jsonx_type_test() {
+  should.equal(json_value_type(JsonNull), "Null")
+  should.equal(json_value_type(JsonBool(True)), "Bool")
+  should.equal(json_value_type(JsonNumber(1.0)), "Number")
+  should.equal(json_value_type(JsonString("hi")), "String")
+  should.equal(json_value_type(JsonArray([])), "Array")
+  should.equal(json_value_type(JsonObject(dict.new())), "Object")
+}
+
+pub fn jsonx_is_type_test() {
+  should.equal(is_null(JsonNull), True)
+  should.equal(is_bool(JsonBool(True)), True)
+  should.equal(is_number(JsonNumber(1.0)), True)
+  should.equal(is_string(JsonString("hi")), True)
+  should.equal(is_array(JsonArray([])), True)
+  should.equal(is_object(JsonObject(dict.new())), True)
+}
+
+pub fn jsonx_to_bool_test() {
+  should.equal(json_to_bool(JsonBool(True)), Ok(True))
+  should.equal(json_to_bool(JsonBool(False)), Ok(False))
+  case json_to_bool(JsonString("true")) {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_to_number_test() {
+  should.equal(json_to_number(JsonNumber(3.14)), Ok(3.14))
+  case json_to_number(JsonString("3.14")) {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_to_int_test() {
+  should.equal(json_to_int(JsonNumber(42.0)), Ok(42))
+  should.equal(json_to_int(JsonNumber(42.7)), Ok(43))
+}
+
+pub fn jsonx_to_string_test() {
+  should.equal(json_to_string(JsonString("hello")), Ok("hello"))
+  case json_to_string(JsonNumber(1.0)) {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_to_array_test() {
+  let arr = [int(1), int(2)]
+  should.equal(json_to_array(JsonArray(arr)), Ok(arr))
+}
+
+pub fn jsonx_to_object_test() {
+  let obj = dict.from_list([#("key", string("value"))])
+  should.equal(json_to_object(JsonObject(obj)), Ok(obj))
+}
+
+pub fn jsonx_to_option_test() {
+  should.equal(json_to_option(JsonNull), None)
+  should.equal(json_to_option(JsonBool(True)), Some(JsonBool(True)))
+}
+
+pub fn jsonx_get_field_test() {
+  let obj = object([#("name", string("Alice"))])
+  should.equal(get_field(obj, "name"), Ok(JsonString("Alice")))
+  case get_field(obj, "missing") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_get_field_as_test() {
+  let obj = object([#("age", int(30))])
+  should.equal(get_field_as(obj, "age", json_to_int), Ok(30))
+}
+
+pub fn jsonx_get_index_test() {
+  let arr = array([int(1), int(2), int(3)])
+  should.equal(get_index(arr, 0), Ok(int(1)))
+  should.equal(get_index(arr, 2), Ok(int(3)))
+  case get_index(arr, 5) {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_get_index_as_test() {
+  let arr = array([int(10), int(20)])
+  should.equal(get_index_as(arr, 0, json_to_int), Ok(10))
+}
+
+pub fn jsonx_map_array_test() {
+  let arr = array([int(1), int(2), int(3)])
+  let result = map_json_array(arr, json_to_int)
+  case result {
+    Ok(items) -> {
+      let values = list.filter_map(items, fn(r) { r })
+      should.equal(values, [1, 2, 3])
+    }
+    Error(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_filter_array_test() {
+  let arr = array([int(1), int(2), int(3)])
+  let filtered = filter_json_array(arr, fn(v) {
+    case json_to_int(v) {
+      Ok(n) -> n > 1
+      Error(_) -> False
+    }
+  })
+  case filtered {
+    Ok(items) -> should.equal(list.length(items), 2)
+    Error(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_keys_values_test() {
+  let obj = object([#("a", int(1)), #("b", int(2))])
+  case keys(obj) {
+    Ok(k) -> should.equal(list.length(k), 2)
+    Error(_) -> should.equal(False, True)
+  }
+  case values(obj) {
+    Ok(v) -> should.equal(list.length(v), 2)
+    Error(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_merge_test() {
+  let base = object([#("a", int(1)), #("b", int(2))])
+  let override = object([#("b", int(3)), #("c", int(4))])
+  case merge_objects(base, override) {
+    Ok(merged) -> {
+      case get_field(merged, "b") {
+        Ok(v) -> should.equal(json_to_int(v), Ok(3))
+        Error(_) -> should.equal(False, True)
+      }
+    }
+    Error(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_set_remove_test() {
+  let obj = object([#("a", int(1))])
+  case set_field(obj, "b", int(2)) {
+    Ok(updated) -> {
+      case get_field(updated, "b") {
+        Ok(v) -> should.equal(json_to_int(v), Ok(2))
+        Error(_) -> should.equal(False, True)
+      }
+    }
+    Error(_) -> should.equal(False, True)
+  }
+  case remove_field(obj, "a") {
+    Ok(updated) -> {
+      case get_field(updated, "a") {
+        Error(_) -> should.equal(True, True)
+        Ok(_) -> should.equal(False, True)
+      }
+    }
+    Error(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_length_test() {
+  let arr = array([int(1), int(2), int(3)])
+  should.equal(array_length(arr), Ok(3))
+  
+  let obj = object([#("a", int(1)), #("b", int(2))])
+  should.equal(object_length(obj), Ok(2))
+}
+
+pub fn jsonx_append_prepend_test() {
+  let arr = array([int(1), int(2)])
+  case append_to_array(arr, int(3)) {
+    Ok(updated) -> should.equal(array_length(updated), Ok(3))
+    Error(_) -> should.equal(False, True)
+  }
+  case prepend_to_array(arr, int(0)) {
+    Ok(updated) -> should.equal(array_length(updated), Ok(3))
+    Error(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_path_test() {
+  let nested = object([
+    #("user", object([
+      #("name", string("Alice")),
+      #("profile", object([
+        #("age", int(30))
+      ]))
+    ]))
+  ])
+  
+  should.equal(path_get(nested, ["user", "name"]), Ok(JsonString("Alice")))
+  should.equal(path_get(nested, ["user", "profile", "age"]), Ok(JsonNumber(30.0)))
+}
+
+pub fn jsonx_encode_test() {
+  should.equal(encode(JsonNull), "null")
+  should.equal(encode(JsonBool(True)), "true")
+  should.equal(encode(JsonBool(False)), "false")
+  should.equal(encode(JsonNumber(42.0)), "42.0")
+  should.equal(encode(JsonString("hello")), "\"hello\"")
+  should.equal(encode(JsonArray([])), "[]")
+  should.equal(encode(JsonObject(dict.new())), "{}")
+}

@@ -6,8 +6,7 @@ import traenupi_core.{
   type ActivityStats, type AIPresence, type DriverPhase, type DriverState,
   type Meeting, type MeetingOpinion, type MeetingStatus, type MoodEntry,
   type Task, type TaskStep,
-  ActivityStats, DriverState, MeetingActive, MeetingClosed, MeetingOpinion,
-  MeetingPending, MoodEntry, Task, TaskStep,
+  ActivityStats, DriverState, MeetingActive, MeetingClosed, MeetingPending,
 }
 
 pub fn new_activity_stats() -> ActivityStats {

@@ -4,10 +4,9 @@ import gleam/option.{type Option, None, Some}
 import gleam/string
 
 import traenupi_core.{
-  type ActivityStats, type AIPresence, type DriverPhase, type DriverState,
-  type KnowledgeEntry, type Meeting, type MeetingOpinion, type MeetingStatus,
-  type MoodEntry, type Prompt, type PromptCategory, type Task, type TaskStep,
-  type WeaknessType,
+  type ActivityStats, type AIPresence, type DriverState,
+  type KnowledgeEntry, type Meeting, type MeetingOpinion,
+  type MoodEntry, type Prompt, type Task, type TaskStep,
 }
 import traenupi_core/utils.{category_to_string, weakness_to_string}
 import traenupi_core/state.{

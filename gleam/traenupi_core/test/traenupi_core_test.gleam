@@ -206,3 +206,81 @@ pub fn get_help_text_test() {
   let help = get_help_text()
   should.equal(string.contains(help, "tellme"), True)
 }
+
+import traenupi_core/validation.{
+  Valid, Invalid,
+  is_not_empty, has_min_length, has_max_length, is_in_range,
+  is_positive, is_non_negative, is_one_of, is_valid_id,
+  is_valid_category, is_valid_weakness, error_to_string,
+  valid, invalid, combine,
+}
+
+pub fn is_not_empty_test() {
+  is_not_empty("hello", "field") |> should.equal(Valid(value: "hello"))
+  is_not_empty("  trimmed  ", "field") |> should.equal(Valid(value: "trimmed"))
+  is_not_empty("", "field") |> should.equal(Invalid(errors: [validation.EmptyField(field: "field")]))
+}
+
+pub fn has_min_length_test() {
+  has_min_length("hello", 3, "field") |> should.equal(Valid(value: "hello"))
+  has_min_length("hi", 3, "field") |> should.equal(Invalid(errors: [validation.InvalidLength(field: "field", min: 3, max: 0, actual: 2)]))
+}
+
+pub fn has_max_length_test() {
+  has_max_length("hi", 5, "field") |> should.equal(Valid(value: "hi"))
+  has_max_length("hello world", 5, "field") |> should.equal(Invalid(errors: [validation.InvalidLength(field: "field", min: 0, max: 5, actual: 11)]))
+}
+
+pub fn is_in_range_test() {
+  is_in_range(5, 1, 10, "field") |> should.equal(Valid(value: 5))
+  is_in_range(0, 1, 10, "field") |> should.equal(Invalid(errors: [validation.OutOfRange(field: "field", min: 1, max: 10, actual: 0)]))
+}
+
+pub fn is_positive_test() {
+  is_positive(5, "field") |> should.equal(Valid(value: 5))
+  is_positive(0, "field") |> should.equal(Invalid(errors: [validation.OutOfRange(field: "field", min: 1, max: 0, actual: 0)]))
+  is_positive(-1, "field") |> should.equal(Invalid(errors: [validation.OutOfRange(field: "field", min: 1, max: 0, actual: -1)]))
+}
+
+pub fn is_non_negative_test() {
+  is_non_negative(0, "field") |> should.equal(Valid(value: 0))
+  is_non_negative(5, "field") |> should.equal(Valid(value: 5))
+  is_non_negative(-1, "field") |> should.equal(Invalid(errors: [validation.OutOfRange(field: "field", min: 0, max: 0, actual: -1)]))
+}
+
+pub fn is_one_of_test() {
+  is_one_of("apple", ["apple", "banana", "cherry"], "fruit") |> should.equal(Valid(value: "apple"))
+  is_one_of("grape", ["apple", "banana", "cherry"], "fruit") |> should.equal(Invalid(errors: [validation.InvalidValue(field: "fruit", value: "grape", allowed: ["apple", "banana", "cherry"])]))
+}
+
+pub fn is_valid_id_test() {
+  is_valid_id("abc123") |> should.equal(Valid(value: "abc123"))
+  is_valid_id("") |> should.equal(Invalid(errors: [validation.EmptyField(field: "id")]))
+  is_valid_id("abc") |> should.equal(Invalid(errors: [validation.InvalidLength(field: "id", min: 4, max: 64, actual: 3)]))
+}
+
+pub fn is_valid_category_test() {
+  is_valid_category("action") |> should.equal(Valid(value: "action"))
+  is_valid_category("verify") |> should.equal(Valid(value: "verify"))
+  is_valid_category("invalid") |> should.equal(Invalid(errors: [validation.InvalidValue(field: "category", value: "invalid", allowed: ["action", "verify", "reflect", "anti_weakness", "checkpoint", "completion"])]))
+}
+
+pub fn is_valid_weakness_test() {
+  is_valid_weakness("context_loss") |> should.equal(Valid(value: "context_loss"))
+  is_valid_weakness("invalid") |> should.equal(Invalid(errors: [validation.InvalidValue(field: "weakness", value: "invalid", allowed: ["context_loss", "incomplete_follow_through", "planning_drift", "error_amnesia", "verification_neglect", "edge_case_blindness", "quality_drift", "verification_gap", "overconfidence", "scope_creep"])]))
+}
+
+pub fn error_to_string_test() {
+  error_to_string(validation.EmptyField(field: "name")) |> should.equal("name cannot be empty")
+  error_to_string(validation.OutOfRange(field: "age", min: 0, max: 100, actual: 150)) |> should.equal("age must be between 0 and 100, got 150")
+}
+
+pub fn combine_valid_test() {
+  let results = [valid("a"), valid("b"), valid("c")]
+  combine(results) |> should.equal(Valid(value: ["a", "b", "c"]))
+}
+
+pub fn combine_invalid_test() {
+  let results = [valid("a"), invalid(validation.EmptyField(field: "x")), valid("c")]
+  combine(results) |> should.equal(Invalid(errors: [validation.EmptyField(field: "x")]))
+}

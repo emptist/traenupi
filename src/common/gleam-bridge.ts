@@ -56,6 +56,20 @@ import {
   get_help_text,
 } from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/cli.mjs";
 
+import {
+  is_not_empty,
+  has_min_length,
+  has_max_length,
+  is_in_range,
+  is_positive,
+  is_non_negative,
+  is_one_of,
+  is_valid_id,
+  is_valid_category,
+  is_valid_weakness,
+  error_to_string,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/validation.mjs";
+
 import { toList } from "../../gleam/traenupi_core/build/dev/javascript/gleam_stdlib/gleam.mjs";
 
 export function demoGleamIntegration(): void {
@@ -188,4 +202,15 @@ export {
   command_to_string,
   is_valid_command,
   get_help_text,
+  is_not_empty,
+  has_min_length,
+  has_max_length,
+  is_in_range,
+  is_positive,
+  is_non_negative,
+  is_one_of,
+  is_valid_id,
+  is_valid_category,
+  is_valid_weakness,
+  error_to_string,
 };

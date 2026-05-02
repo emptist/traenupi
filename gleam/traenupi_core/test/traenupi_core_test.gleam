@@ -829,3 +829,162 @@ pub fn fs_format_size_test() {
   should.equal(format_size(1536), "1 KB")
   should.equal(format_size(1048576), "1 MB")
 }
+
+import traenupi_core/datetime.{
+  type Month, type Weekday, type DateTime,
+  January, February, March, April, May, June, July, August, September, October, November, December,
+  Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday,
+  month_to_int, int_to_month, weekday_to_int, int_to_weekday,
+  month_to_string, weekday_to_string, month_to_short, weekday_to_short,
+  is_leap_year, days_in_month, is_valid_date, is_valid_time,
+  format_datetime, to_iso8601, to_date_string, to_time_string,
+  create, create_full, add_days, add_hours, add_minutes, add_seconds,
+  is_before, is_after, is_same_day, start_of_day, end_of_day,
+}
+
+pub fn datetime_month_to_int_test() {
+  should.equal(month_to_int(January), 1)
+  should.equal(month_to_int(June), 6)
+  should.equal(month_to_int(December), 12)
+}
+
+pub fn datetime_int_to_month_test() {
+  should.equal(int_to_month(1), Some(January))
+  should.equal(int_to_month(6), Some(June))
+  should.equal(int_to_month(12), Some(December))
+  should.equal(int_to_month(13), None)
+  should.equal(int_to_month(0), None)
+}
+
+pub fn datetime_weekday_to_int_test() {
+  should.equal(weekday_to_int(Monday), 1)
+  should.equal(weekday_to_int(Wednesday), 3)
+  should.equal(weekday_to_int(Sunday), 7)
+}
+
+pub fn datetime_int_to_weekday_test() {
+  should.equal(int_to_weekday(1), Some(Monday))
+  should.equal(int_to_weekday(7), Some(Sunday))
+  should.equal(int_to_weekday(8), None)
+}
+
+pub fn datetime_month_to_string_test() {
+  should.equal(month_to_string(January), "January")
+  should.equal(month_to_string(December), "December")
+}
+
+pub fn datetime_weekday_to_string_test() {
+  should.equal(weekday_to_string(Monday), "Monday")
+  should.equal(weekday_to_string(Sunday), "Sunday")
+}
+
+pub fn datetime_month_to_short_test() {
+  should.equal(month_to_short(January), "Jan")
+  should.equal(month_to_short(September), "Sep")
+}
+
+pub fn datetime_weekday_to_short_test() {
+  should.equal(weekday_to_short(Monday), "Mon")
+  should.equal(weekday_to_short(Thursday), "Thu")
+}
+
+pub fn datetime_is_leap_year_test() {
+  should.equal(is_leap_year(2024), True)
+  should.equal(is_leap_year(2023), False)
+  should.equal(is_leap_year(2000), True)
+  should.equal(is_leap_year(1900), False)
+}
+
+pub fn datetime_days_in_month_test() {
+  should.equal(days_in_month(2024, January), 31)
+  should.equal(days_in_month(2024, February), 29)
+  should.equal(days_in_month(2023, February), 28)
+  should.equal(days_in_month(2024, April), 30)
+}
+
+pub fn datetime_is_valid_date_test() {
+  should.equal(is_valid_date(2024, January, 15), True)
+  should.equal(is_valid_date(2024, February, 29), True)
+  should.equal(is_valid_date(2023, February, 29), False)
+  should.equal(is_valid_date(2024, January, 32), False)
+}
+
+pub fn datetime_is_valid_time_test() {
+  should.equal(is_valid_time(12, 30, 45), True)
+  should.equal(is_valid_time(23, 59, 59), True)
+  should.equal(is_valid_time(24, 0, 0), False)
+  should.equal(is_valid_time(12, 60, 0), False)
+}
+
+pub fn datetime_format_test() {
+  let dt = create_full(2024, March, 15, 14, 30, 45)
+  should.equal(to_iso8601(dt), "2024-03-15T14:30:45")
+  should.equal(to_date_string(dt), "2024-03-15")
+  should.equal(to_time_string(dt), "14:30:45")
+}
+
+pub fn datetime_format_custom_test() {
+  let dt = create_full(2024, March, 15, 14, 30, 45)
+  should.equal(format_datetime(dt, "%Y-%m-%d"), "2024-03-15")
+  should.equal(format_datetime(dt, "%B %d, %Y"), "March 15, 2024")
+}
+
+pub fn datetime_add_days_test() {
+  let dt = create(2024, March, 15)
+  let dt2 = add_days(dt, 5)
+  should.equal(dt2.day, 20)
+  
+  let dt3 = add_days(dt, 20)
+  should.equal(dt3.month, April)
+  should.equal(dt3.day, 4)
+}
+
+pub fn datetime_add_hours_test() {
+  let dt = create_full(2024, March, 15, 10, 0, 0)
+  let dt2 = add_hours(dt, 5)
+  should.equal(dt2.hour, 15)
+  
+  let dt3 = add_hours(dt, 15)
+  should.equal(dt3.day, 16)
+  should.equal(dt3.hour, 1)
+}
+
+pub fn datetime_add_minutes_test() {
+  let dt = create_full(2024, March, 15, 10, 30, 0)
+  let dt2 = add_minutes(dt, 45)
+  should.equal(dt2.hour, 11)
+  should.equal(dt2.minute, 15)
+}
+
+pub fn datetime_add_seconds_test() {
+  let dt = create_full(2024, March, 15, 10, 30, 30)
+  let dt2 = add_seconds(dt, 45)
+  should.equal(dt2.minute, 31)
+  should.equal(dt2.second, 15)
+}
+
+pub fn datetime_compare_test() {
+  let dt1 = create_full(2024, March, 15, 10, 0, 0)
+  let dt2 = create_full(2024, March, 15, 12, 0, 0)
+  let dt3 = create_full(2024, March, 16, 10, 0, 0)
+  
+  should.equal(is_before(dt1, dt2), True)
+  should.equal(is_after(dt2, dt1), True)
+  should.equal(is_before(dt1, dt3), True)
+  should.equal(is_same_day(dt1, dt2), True)
+  should.equal(is_same_day(dt1, dt3), False)
+}
+
+pub fn datetime_start_end_of_day_test() {
+  let dt = create_full(2024, March, 15, 14, 30, 45)
+  let start = start_of_day(dt)
+  let end = end_of_day(dt)
+  
+  should.equal(start.hour, 0)
+  should.equal(start.minute, 0)
+  should.equal(start.second, 0)
+  
+  should.equal(end.hour, 23)
+  should.equal(end.minute, 59)
+  should.equal(end.second, 59)
+}

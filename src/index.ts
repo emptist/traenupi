@@ -118,7 +118,10 @@ COMMANDS:
                           Without name: list all tables
                           With name: show detailed info
   resolve <id> [type]     Resolve short ID to full UUID
-                          Types: meeting, task, issue, agent, opinion, skill, memory, auto
+                          Types: meeting, task, issue, agent, opinion, skill, memory, inter_review, auto
+  reviews                 List pending inter-reviews
+  review <id>             Show inter-review details and commit diff
+  review <id> complete "summary"  Complete an inter-review
   skill scan              Scan all skills for gaps
   skill score             Show skill completeness scores
   skill improve <id>      Auto-improve a skill (trigger phrases, tags)
@@ -1424,7 +1427,7 @@ EXAMPLES:
     const knowledge = loadKnowledge();
     console.log("[KNOWLEDGE] " + knowledge.length + " entries loaded");
     
-    console.log("\n[3/4] Checking Nezha tasks...");
+    console.log("\n[3/5] Checking Nezha tasks...");
     try {
       const tasks = execSync("nezha tasks", { encoding: "utf-8", timeout: 5000 });
       const taskCount = (tasks.match(/│/g) || []).length;
@@ -1433,7 +1436,37 @@ EXAMPLES:
       console.log("[NEZHA] Not available");
     }
     
-    console.log("\n[4/4] Asking baby AI for context...");
+    console.log("\n[4/5] Checking pending inter-reviews...");
+    try {
+      const pendingReviews = psqlQuery(
+        "SELECT id, task_id, reviewer_id, requested_at, commit_hash FROM inter_reviews WHERE status = 'pending' ORDER BY requested_at DESC LIMIT 5;",
+        { silent: true }
+      );
+      if (pendingReviews && pendingReviews.trim()) {
+        const lines = pendingReviews.trim().split("\n").filter(Boolean);
+        console.log("[INTER-REVIEW] " + lines.length + " pending review(s) found!");
+        console.log("──────────────────────────────────────────────────");
+        for (const line of lines) {
+          const parts = line.split("|");
+          if (parts.length >= 5) {
+            const reviewId = parts[0]?.substring(0, 8) || "?";
+            const taskId = parts[1]?.substring(0, 8) || "?";
+            const reviewerId = parts[2]?.substring(0, 20) || "?";
+            const requestedAt = parts[3] || "?";
+            const commitHash = parts[4]?.substring(0, 7) || "?";
+            console.log(`  🔍 ${reviewId}... | Task: ${taskId}... | By: ${reviewerId} | Commit: ${commitHash}`);
+          }
+        }
+        console.log("──────────────────────────────────────────────────");
+        console.log("💡 Tip: Review with: psql -c \"SELECT * FROM inter_reviews WHERE id::text LIKE '<id>%';\"");
+      } else {
+        console.log("[INTER-REVIEW] No pending reviews");
+      }
+    } catch (e) {
+      console.log("[INTER-REVIEW] Error checking: " + (e instanceof Error ? e.message : String(e)));
+    }
+    
+    console.log("\n[5/5] Asking baby AI for context...");
     console.log("──────────────────────────────────────────────────");
     tellmeSync("I'm a new session. What should I work on?");
     return;
@@ -1442,6 +1475,160 @@ EXAMPLES:
   if (command === "init") {
     const projectPath = args[1];
     initProject(projectPath);
+    return;
+  }
+  
+  if (command === "reviews") {
+    console.log("╔════════════════════════════════════════════╗");
+    console.log("║     Pending Inter-Reviews                  ║");
+    console.log("╚════════════════════════════════════════════╝\n");
+    
+    try {
+      const pendingReviews = psqlQuery(
+        "SELECT id, task_id, reviewer_id, requested_at, commit_hash, review_context FROM inter_reviews WHERE status = 'pending' ORDER BY requested_at DESC;",
+        { silent: true }
+      );
+      
+      if (!pendingReviews || !pendingReviews.trim()) {
+        console.log("✅ No pending inter-reviews found!");
+        return;
+      }
+      
+      const lines = pendingReviews.trim().split("\n").filter(Boolean);
+      console.log(`📋 Found ${lines.length} pending review(s):\n`);
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const parts = line.split("|");
+        if (parts.length >= 6) {
+          const reviewId = parts[0] || "?";
+          const taskId = parts[1] || "?";
+          const reviewerId = parts[2] || "?";
+          const requestedAt = parts[3] || "?";
+          const commitHash = parts[4] || "?";
+          const context = parts[5] || "";
+          
+          console.log(`──────────────────────────────────────────────────`);
+          console.log(`[${i + 1}/${lines.length}] Review ID: ${reviewId}`);
+          console.log(`  Task ID:    ${taskId}`);
+          console.log(`  Requester:  ${reviewerId}`);
+          console.log(`  Commit:     ${commitHash.substring(0, 7)}`);
+          console.log(`  Requested:  ${requestedAt}`);
+          if (context) {
+            try {
+              const ctx = JSON.parse(context);
+              if (ctx.message) console.log(`  Message:    ${ctx.message}`);
+              if (ctx.taskDescription) console.log(`  Task:       ${ctx.taskDescription}`);
+            } catch {
+              console.log(`  Context:    ${context.substring(0, 50)}...`);
+            }
+          }
+        }
+      }
+      console.log(`──────────────────────────────────────────────────`);
+      console.log(`\n💡 To perform a review:`);
+      console.log(`   traenupi review <id>  - View review details and commit`);
+      console.log(`   traenupi review <id> complete "summary" - Complete the review`);
+    } catch (e) {
+      console.log("[ERROR] Failed to query pending reviews: " + (e instanceof Error ? e.message : String(e)));
+    }
+    return;
+  }
+  
+  if (command === "review") {
+    const reviewId = args[1];
+    const subCommand = args[2];
+    
+    if (!reviewId) {
+      console.log("[ERROR] Usage: traenupi review <id> [complete \"summary\"]");
+      process.exit(1);
+    }
+    
+    const result = resolveId(reviewId, "inter_review" as EntityType);
+    const fullReviewId = result?.id ?? null;
+    if (!fullReviewId) {
+      console.log(`[ERROR] Review not found: ${reviewId}`);
+      process.exit(1);
+    }
+    
+    try {
+      const reviewData = psqlQuery(
+        `SELECT id, task_id, reviewer_id, requested_at, commit_hash, review_context, status FROM inter_reviews WHERE id = '${fullReviewId}';`,
+        { silent: true }
+      );
+      
+      if (!reviewData || !reviewData.trim()) {
+        console.log(`[ERROR] Review not found: ${fullReviewId}`);
+        return;
+      }
+      
+      const parts = reviewData.trim().split("|");
+      const id = parts[0] || "?";
+      const taskId = parts[1] || "?";
+      const reviewerId = parts[2] || "?";
+      const requestedAt = parts[3] || "?";
+      const commitHash = parts[4] || "?";
+      const context = parts[5] || "";
+      const status = parts[6] || "?";
+      
+      if (subCommand === "complete") {
+        const summary = args.slice(3).join(" ");
+        if (!summary) {
+          console.log("[ERROR] Usage: traenupi review <id> complete \"summary\"");
+          process.exit(1);
+        }
+        
+        const agentId = getAgentId();
+        psqlExec(
+          `UPDATE inter_reviews SET status='completed', summary='${summary.replace(/'/g, "''")}', reviewed_by='${agentId}', completed_at=NOW() WHERE id='${id}';`
+        );
+        console.log(`✅ Review completed: ${id}`);
+        console.log(`   Summary: ${summary}`);
+        console.log(`   Reviewed by: ${agentId}`);
+        return;
+      }
+      
+      console.log("╔════════════════════════════════════════════╗");
+      console.log("║     Inter-Review Details                   ║");
+      console.log("╚════════════════════════════════════════════╝\n");
+      
+      console.log(`📋 Review ID:   ${id}`);
+      console.log(`📊 Status:      ${status}`);
+      console.log(`📝 Task ID:     ${taskId}`);
+      console.log(`👤 Requester:   ${reviewerId}`);
+      console.log(`📅 Requested:   ${requestedAt}`);
+      console.log(`🔗 Commit:      ${commitHash}`);
+      
+      if (context) {
+        try {
+          const ctx = JSON.parse(context);
+          console.log(`\n📄 Context:`);
+          if (ctx.message) console.log(`   Message: ${ctx.message}`);
+          if (ctx.taskDescription) console.log(`   Task: ${ctx.taskDescription}`);
+          if (ctx.files) console.log(`   Files: ${ctx.files.join(", ")}`);
+          if (ctx.changes) console.log(`   Changes: ${ctx.changes}`);
+        } catch {
+          console.log(`\n📄 Context: ${context}`);
+        }
+      }
+      
+      console.log(`\n──────────────────────────────────────────────────`);
+      console.log(`📦 Commit Diff:\n`);
+      
+      try {
+        const diff = execSync(`git show ${commitHash} --stat`, { encoding: "utf-8", timeout: 10000 });
+        console.log(diff);
+      } catch {
+        console.log(`[WARN] Could not fetch commit diff. Run: git show ${commitHash}`);
+      }
+      
+      console.log(`──────────────────────────────────────────────────`);
+      console.log(`\n💡 To complete this review:`);
+      console.log(`   traenupi review ${id.substring(0, 8)} complete "Your review summary here"`);
+      
+    } catch (e) {
+      console.log("[ERROR] Failed to get review: " + (e instanceof Error ? e.message : String(e)));
+    }
     return;
   }
   

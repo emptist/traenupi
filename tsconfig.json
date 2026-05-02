@@ -11,8 +11,12 @@
     "forceConsistentCasingInFileNames": true,
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    "baseUrl": ".",
+    "paths": {
+      "@gleam/*": ["gleam/traenupi_core/build/dev/javascript/*"]
+    }
   },
-  "include": ["src"],
+  "include": ["src", "gleam/traenupi_core/build/dev/javascript/**/*.d.mts"],
   "exclude": ["node_modules", "dist"]
 }

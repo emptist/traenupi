@@ -7,7 +7,8 @@ export type EntityType =
   | "agent"
   | "opinion"
   | "skill"
-  | "memory";
+  | "memory"
+  | "inter_review";
 
 export interface ResolutionResult {
   id: string;
@@ -29,6 +30,7 @@ const ENTITY_TABLES: Record<EntityType, EntityTableConfig> = {
   opinion: { table: "meeting_opinions", idColumn: "id" },
   skill: { table: "skills", idColumn: "id" },
   memory: { table: "memory", idColumn: "id" },
+  inter_review: { table: "inter_reviews", idColumn: "id" },
 };
 
 const DETECTION_ORDER: EntityType[] = [
@@ -39,6 +41,7 @@ const DETECTION_ORDER: EntityType[] = [
   "opinion",
   "skill",
   "memory",
+  "inter_review",
 ];
 
 const MIN_SHORT_ID_LENGTH = 4;

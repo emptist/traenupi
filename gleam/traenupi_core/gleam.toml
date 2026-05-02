@@ -1,0 +1,17 @@
+name = "traenupi_core"
+version = "1.0.0"
+target = "javascript"
+
+description = "Core types and utilities for TraeNuPI - Gleam implementation"
+licences = ["MIT"]
+repository = { type = "github", user = "nezha", repo = "traenupi" }
+
+[javascript]
+typescript_declarations = true
+runtime = "nodejs"
+
+[dependencies]
+gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"

@@ -6,6 +6,8 @@ import {
   PromptCategory$Checkpoint,
   PromptCategory$Completion,
   type PromptCategory$,
+  type ActivityStats$,
+  type DriverState$,
 } from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core.mjs";
 
 import {
@@ -18,6 +20,34 @@ import {
   parse_key_value,
   ansi_reset,
 } from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/utils.mjs";
+
+import {
+  new_activity_stats,
+  increment_questions,
+  increment_knowledge,
+  increment_meeting_opinions,
+  increment_baby_ai,
+  increment_reminders,
+  total_activity,
+  meeting_status_to_string,
+  meeting_status_from_string,
+  driver_phase_to_string,
+  driver_phase_from_string,
+  new_driver_state,
+  advance_step,
+  set_phase,
+  increment_prompts,
+  task_progress,
+  is_task_complete,
+  summarize_stats,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/state.mjs";
+
+import {
+  encode_activity_stats,
+  encode_driver_state,
+  encode_task,
+  encode_knowledge_entry,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/json.mjs";
 
 export function demoGleamIntegration(): void {
   console.log("=== Gleam + TypeScript Integration Demo ===\n");
@@ -49,13 +79,37 @@ export function demoGleamIntegration(): void {
   const cliOutput = "item1|value1\nitem2|value2\nitem3|value3";
   const parsedOutput = parse_cli_output(cliOutput);
   console.log(`  Input: "${cliOutput.replace(/\n/g, "\\n")}"`);
-  console.log(`  Parsed: ${JSON.stringify(parsedOutput)}`);
+  console.log(`  Parsed rows: ${JSON.stringify(parsedOutput).length} chars`);
 
   console.log("\nKey-value parsing:");
   const kvOutput = "name: John\nage: 30\ncity: Tokyo";
   const parsedKv = parse_key_value(kvOutput, ":");
   console.log(`  Input: "${kvOutput.replace(/\n/g, "\\n")}"`);
-  console.log(`  Parsed: ${JSON.stringify(parsedKv)}`);
+  console.log(`  Parsed pairs: ${JSON.stringify(parsedKv).length} chars`);
+
+  console.log("\n--- State Management Demo ---");
+
+  console.log("\nActivity Stats:");
+  let stats = new_activity_stats();
+  console.log(`  Initial: questions=${stats.questions_today}, knowledge=${stats.knowledge_stored}`);
+  stats = increment_questions(stats);
+  stats = increment_questions(stats);
+  stats = increment_knowledge(stats);
+  console.log(`  After 2 questions, 1 knowledge: total=${total_activity(stats)}`);
+  console.log(`  Summary: ${summarize_stats(stats)}`);
+
+  console.log("\nDriver State:");
+  const driverState = new_driver_state();
+  console.log(`  Initial phase: ${driver_phase_to_string(driverState.phase)}`);
+  console.log(`  Task progress: ${task_progress(driverState)}`);
+  console.log(`  Is complete: ${is_task_complete(driverState)}`);
+
+  const advancedState = advance_step(driverState);
+  console.log(`  After advance: step=${advancedState.current_step_index}`);
+
+  console.log("\nJSON Encoding:");
+  console.log(`  ActivityStats: ${encode_activity_stats(stats).substring(0, 80)}...`);
+  console.log(`  DriverState: ${encode_driver_state(driverState).substring(0, 80)}...`);
 
   console.log(`\n${ansi_reset}Demo complete!`);
 }
@@ -68,6 +122,8 @@ export {
   PromptCategory$Checkpoint,
   PromptCategory$Completion,
   type PromptCategory$,
+  type ActivityStats$,
+  type DriverState$,
   category_to_string,
   category_from_string,
   category_icon,
@@ -76,4 +132,26 @@ export {
   parse_cli_output,
   parse_key_value,
   ansi_reset,
+  new_activity_stats,
+  increment_questions,
+  increment_knowledge,
+  increment_meeting_opinions,
+  increment_baby_ai,
+  increment_reminders,
+  total_activity,
+  meeting_status_to_string,
+  meeting_status_from_string,
+  driver_phase_to_string,
+  driver_phase_from_string,
+  new_driver_state,
+  advance_step,
+  set_phase,
+  increment_prompts,
+  task_progress,
+  is_task_complete,
+  summarize_stats,
+  encode_activity_stats,
+  encode_driver_state,
+  encode_task,
+  encode_knowledge_entry,
 };

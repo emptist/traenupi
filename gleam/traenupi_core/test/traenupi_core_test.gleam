@@ -1644,3 +1644,184 @@ pub fn jsonx_encode_test() {
   should.equal(encode(JsonArray([])), "[]")
   should.equal(encode(JsonObject(dict.new())), "{}")
 }
+
+import traenupi_core/collection.{
+  Queue, new_queue, queue_from_list, queue_to_list,
+  enqueue, dequeue, queue_peek, queue_length, queue_is_empty,
+  queue_map, queue_filter, queue_fold,
+  Stack, new_stack, stack_from_list, stack_to_list,
+  push, pop, stack_peek, stack_length, stack_is_empty,
+  stack_map, stack_filter, stack_fold, stack_reverse,
+  Deque, new_deque, deque_from_list, deque_to_list,
+  push_front, push_back, pop_front, pop_back,
+  deque_peek_front, deque_peek_back, deque_length, deque_is_empty,
+  deque_map, deque_filter, deque_fold,
+}
+
+pub fn queue_new_test() {
+  let q = new_queue()
+  should.equal(queue_is_empty(q), True)
+  should.equal(queue_length(q), 0)
+}
+
+pub fn queue_enqueue_dequeue_test() {
+  let q = new_queue()
+    |> enqueue(1)
+    |> enqueue(2)
+    |> enqueue(3)
+  
+  should.equal(queue_length(q), 3)
+  
+  let #(first, q) = dequeue(q)
+  should.equal(first, Some(1))
+  
+  let #(second, q) = dequeue(q)
+  should.equal(second, Some(2))
+  
+  let #(third, q) = dequeue(q)
+  should.equal(third, Some(3))
+  
+  let #(fourth, _) = dequeue(q)
+  should.equal(fourth, None)
+}
+
+pub fn queue_peek_test() {
+  let q = new_queue() |> enqueue(42)
+  should.equal(queue_peek(q), Some(42))
+  
+  let #(first, q) = dequeue(q)
+  should.equal(first, Some(42))
+  should.equal(queue_peek(q), None)
+}
+
+pub fn queue_from_to_list_test() {
+  let q = queue_from_list([1, 2, 3])
+  should.equal(queue_to_list(q), [1, 2, 3])
+}
+
+pub fn queue_map_filter_test() {
+  let q = queue_from_list([1, 2, 3, 4, 5])
+    |> queue_map(fn(x) { x * 2 })
+    |> queue_filter(fn(x) { x > 4 })
+  
+  should.equal(queue_to_list(q), [6, 8, 10])
+}
+
+pub fn queue_fold_test() {
+  let q = queue_from_list([1, 2, 3])
+  let sum = queue_fold(q, 0, fn(item, acc) { item + acc })
+  should.equal(sum, 6)
+}
+
+pub fn stack_new_test() {
+  let s = new_stack()
+  should.equal(stack_is_empty(s), True)
+  should.equal(stack_length(s), 0)
+}
+
+pub fn stack_push_pop_test() {
+  let s = new_stack()
+    |> push(1)
+    |> push(2)
+    |> push(3)
+  
+  should.equal(stack_length(s), 3)
+  
+  let #(first, s) = pop(s)
+  should.equal(first, Some(3))
+  
+  let #(second, s) = pop(s)
+  should.equal(second, Some(2))
+  
+  let #(third, s) = pop(s)
+  should.equal(third, Some(1))
+  
+  let #(fourth, _) = pop(s)
+  should.equal(fourth, None)
+}
+
+pub fn stack_peek_test() {
+  let s = new_stack() |> push(42)
+  should.equal(stack_peek(s), Some(42))
+  
+  let #(first, s) = pop(s)
+  should.equal(first, Some(42))
+  should.equal(stack_peek(s), None)
+}
+
+pub fn stack_from_to_list_test() {
+  let s = stack_from_list([1, 2, 3])
+  should.equal(stack_to_list(s), [1, 2, 3])
+}
+
+pub fn stack_map_filter_test() {
+  let s = stack_from_list([1, 2, 3, 4, 5])
+    |> stack_map(fn(x) { x * 2 })
+    |> stack_filter(fn(x) { x > 4 })
+  
+  should.equal(stack_to_list(s), [6, 8, 10])
+}
+
+pub fn stack_fold_test() {
+  let s = stack_from_list([1, 2, 3])
+  let sum = stack_fold(s, 0, fn(item, acc) { item + acc })
+  should.equal(sum, 6)
+}
+
+pub fn stack_reverse_test() {
+  let s = stack_from_list([1, 2, 3])
+  let reversed = stack_reverse(s)
+  should.equal(stack_to_list(reversed), [3, 2, 1])
+}
+
+pub fn deque_new_test() {
+  let d = new_deque()
+  should.equal(deque_is_empty(d), True)
+  should.equal(deque_length(d), 0)
+}
+
+pub fn deque_push_pop_test() {
+  let d = new_deque()
+    |> push_front(1)
+    |> push_back(2)
+    |> push_front(0)
+  
+  should.equal(deque_length(d), 3)
+  
+  let #(front, d) = pop_front(d)
+  should.equal(front, Some(0))
+  
+  let #(back, d) = pop_back(d)
+  should.equal(back, Some(2))
+  
+  let #(front2, _) = pop_front(d)
+  should.equal(front2, Some(1))
+}
+
+pub fn deque_peek_test() {
+  let d = new_deque()
+    |> push_front(1)
+    |> push_back(2)
+  
+  should.equal(deque_peek_front(d), Some(1))
+  should.equal(deque_peek_back(d), Some(2))
+}
+
+pub fn deque_from_to_list_test() {
+  let d = deque_from_list([1, 2, 3])
+  should.equal(deque_to_list(d), [1, 2, 3])
+}
+
+pub fn deque_map_filter_test() {
+  let d = deque_from_list([1, 2, 3, 4, 5])
+    |> deque_map(fn(x) { x * 2 })
+    |> deque_filter(fn(x) { x > 4 })
+  
+  should.equal(deque_to_list(d), [6, 8, 10])
+}
+
+pub fn deque_fold_test() {
+  let d = deque_from_list([1, 2, 3])
+  let sum = deque_fold(d, 0, fn(item, acc) { item + acc })
+  should.equal(sum, 6)
+}

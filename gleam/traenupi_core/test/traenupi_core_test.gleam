@@ -1825,3 +1825,199 @@ pub fn deque_fold_test() {
   let sum = deque_fold(d, 0, fn(item, acc) { item + acc })
   should.equal(sum, 6)
 }
+
+import traenupi_core/cache.{
+  Cache, new_cache, cache_get, cache_set, cache_set_with_ttl,
+  cache_delete, cache_clear, cache_size, cache_has, cache_keys,
+  cache_cleanup, cache_to_list,
+  LRUCache, new_lru_cache, lru_get, lru_set, lru_delete,
+  lru_clear, lru_size, lru_has, lru_keys,
+}
+
+pub fn cache_new_test() {
+  let c = new_cache(10, 100)
+  should.equal(cache_size(c), 0)
+}
+
+pub fn cache_set_get_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+    |> cache_set("b", 2, 0)
+    |> cache_set("c", 3, 0)
+  
+  should.equal(cache_size(c), 3)
+  
+  let #(val1, _) = cache_get(c, "a", 0)
+  should.equal(val1, Some(1))
+  
+  let #(val2, _) = cache_get(c, "b", 0)
+  should.equal(val2, Some(2))
+  
+  let #(val3, _) = cache_get(c, "c", 0)
+  should.equal(val3, Some(3))
+}
+
+pub fn cache_expiry_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+  
+  let #(val1, _) = cache_get(c, "a", 50)
+  should.equal(val1, Some(1))
+  
+  let #(val2, c) = cache_get(c, "a", 150)
+  should.equal(val2, None)
+  should.equal(cache_size(c), 0)
+}
+
+pub fn cache_custom_ttl_test() {
+  let c = new_cache(10, 100)
+    |> cache_set_with_ttl("a", 1, 0, 50)
+  
+  let #(val1, _) = cache_get(c, "a", 25)
+  should.equal(val1, Some(1))
+  
+  let #(val2, _) = cache_get(c, "a", 75)
+  should.equal(val2, None)
+}
+
+pub fn cache_delete_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+    |> cache_set("b", 2, 0)
+    |> cache_delete("a")
+  
+  should.equal(cache_size(c), 1)
+  
+  let #(val, _) = cache_get(c, "a", 0)
+  should.equal(val, None)
+  
+  let #(val2, _) = cache_get(c, "b", 0)
+  should.equal(val2, Some(2))
+}
+
+pub fn cache_clear_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+    |> cache_set("b", 2, 0)
+    |> cache_clear()
+  
+  should.equal(cache_size(c), 0)
+}
+
+pub fn cache_has_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+  
+  should.equal(cache_has(c, "a", 0), True)
+  should.equal(cache_has(c, "a", 150), False)
+  should.equal(cache_has(c, "b", 0), False)
+}
+
+pub fn cache_keys_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+    |> cache_set("b", 2, 0)
+  
+  let keys = cache_keys(c)
+  should.equal(list.length(keys), 2)
+}
+
+pub fn cache_cleanup_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+    |> cache_set("b", 2, 0)
+  
+  let c = cache_cleanup(c, 150)
+  should.equal(cache_size(c), 0)
+}
+
+pub fn cache_to_list_test() {
+  let c = new_cache(10, 100)
+    |> cache_set("a", 1, 0)
+    |> cache_set("b", 2, 0)
+  
+  let items = cache_to_list(c)
+  should.equal(list.length(items), 2)
+}
+
+pub fn cache_max_size_test() {
+  let c = new_cache(2, 100)
+    |> cache_set("a", 1, 0)
+    |> cache_set("b", 2, 0)
+    |> cache_set("c", 3, 0)
+  
+  should.equal(cache_size(c), 2)
+}
+
+pub fn lru_cache_new_test() {
+  let c = new_lru_cache(10)
+  should.equal(lru_size(c), 0)
+}
+
+pub fn lru_set_get_test() {
+  let c = new_lru_cache(10)
+    |> lru_set("a", 1)
+    |> lru_set("b", 2)
+    |> lru_set("c", 3)
+  
+  should.equal(lru_size(c), 3)
+  
+  let #(val1, _) = lru_get(c, "a")
+  should.equal(val1, Some(1))
+  
+  let #(val2, _) = lru_get(c, "b")
+  should.equal(val2, Some(2))
+  
+  let #(val3, _) = lru_get(c, "c")
+  should.equal(val3, Some(3))
+}
+
+pub fn lru_delete_test() {
+  let c = new_lru_cache(10)
+    |> lru_set("a", 1)
+    |> lru_set("b", 2)
+    |> lru_delete("a")
+  
+  should.equal(lru_size(c), 1)
+  
+  let #(val, _) = lru_get(c, "a")
+  should.equal(val, None)
+  
+  let #(val2, _) = lru_get(c, "b")
+  should.equal(val2, Some(2))
+}
+
+pub fn lru_clear_test() {
+  let c = new_lru_cache(10)
+    |> lru_set("a", 1)
+    |> lru_set("b", 2)
+    |> lru_clear()
+  
+  should.equal(lru_size(c), 0)
+}
+
+pub fn lru_has_test() {
+  let c = new_lru_cache(10)
+    |> lru_set("a", 1)
+  
+  should.equal(lru_has(c, "a"), True)
+  should.equal(lru_has(c, "b"), False)
+}
+
+pub fn lru_keys_test() {
+  let c = new_lru_cache(10)
+    |> lru_set("a", 1)
+    |> lru_set("b", 2)
+  
+  let keys = lru_keys(c)
+  should.equal(list.length(keys), 2)
+}
+
+pub fn lru_max_size_test() {
+  let c = new_lru_cache(2)
+    |> lru_set("a", 1)
+    |> lru_set("b", 2)
+    |> lru_set("c", 3)
+  
+  should.equal(lru_size(c), 2)
+}

@@ -1183,3 +1183,207 @@ pub fn str_possessive_test() {
   should.equal(possessive("John"), "John's")
   should.equal(possessive("James"), "James'")
 }
+
+import traenupi_core/resultx.{
+  option_to_result, result_to_option,
+  is_ok, is_error, is_some, is_none,
+  get_or_else as opt_get_or_else, get_or_default as opt_get_or_default,
+  unwrap_or_else, unwrap_or_default,
+  map_both, map_option,
+  filter_option, filter_result,
+  flatten_option, flatten_result,
+  partition_results, partition_options,
+  first_ok, first_some,
+  all_ok, all_some,
+  or_else, or_else_result,
+  and_then, zip, zip_result,
+  contains, contains_ok, contains_error,
+  ok, err,
+  transpose_option_result, transpose_result_option,
+  fold_ok, fold_option,
+}
+
+pub fn resultx_option_to_result_test() {
+  should.equal(option_to_result(Some(42), "error"), Ok(42))
+  should.equal(option_to_result(None, "error"), Error("error"))
+}
+
+pub fn resultx_result_to_option_test() {
+  should.equal(result_to_option(Ok(42)), Some(42))
+  should.equal(result_to_option(Error("error")), None)
+}
+
+pub fn resultx_is_ok_error_test() {
+  should.equal(is_ok(Ok(42)), True)
+  should.equal(is_ok(Error("error")), False)
+  should.equal(is_error(Ok(42)), False)
+  should.equal(is_error(Error("error")), True)
+}
+
+pub fn resultx_is_some_none_test() {
+  should.equal(is_some(Some(42)), True)
+  should.equal(is_some(None), False)
+  should.equal(is_none(Some(42)), False)
+  should.equal(is_none(None), True)
+}
+
+pub fn resultx_get_or_else_test() {
+  should.equal(opt_get_or_else(Some(42), fn() { 0 }), 42)
+  should.equal(opt_get_or_else(None, fn() { 0 }), 0)
+}
+
+pub fn resultx_get_or_default_test() {
+  should.equal(opt_get_or_default(Some(42), 0), 42)
+  should.equal(opt_get_or_default(None, 0), 0)
+}
+
+pub fn resultx_unwrap_or_else_test() {
+  should.equal(unwrap_or_else(Ok(42), fn(_) { 0 }), 42)
+  should.equal(unwrap_or_else(Error("error"), fn(_) { 0 }), 0)
+}
+
+pub fn resultx_unwrap_or_default_test() {
+  should.equal(unwrap_or_default(Ok(42), 0), 42)
+  should.equal(unwrap_or_default(Error("error"), 0), 0)
+}
+
+pub fn resultx_map_both_test() {
+  should.equal(map_both(Ok(42), fn(x) { x * 2 }, fn(e) { "error: " <> e }), Ok(84))
+  should.equal(map_both(Error("fail"), fn(x) { x * 2 }, fn(e) { "error: " <> e }), Error("error: fail"))
+}
+
+pub fn resultx_map_option_test() {
+  should.equal(map_option(Some(42), fn(x) { x * 2 }), Some(84))
+  should.equal(map_option(None, fn(x) { x * 2 }), None)
+}
+
+pub fn resultx_filter_option_test() {
+  should.equal(filter_option(Some(42), fn(x) { x > 10 }), Some(42))
+  should.equal(filter_option(Some(5), fn(x) { x > 10 }), None)
+  should.equal(filter_option(None, fn(x) { True }), None)
+}
+
+pub fn resultx_filter_result_test() {
+  should.equal(filter_result(Ok(42), fn(x) { x > 10 }, "too small"), Ok(42))
+  should.equal(filter_result(Ok(5), fn(x) { x > 10 }, "too small"), Error("too small"))
+  should.equal(filter_result(Error("error"), fn(x) { True }, "too small"), Error("error"))
+}
+
+pub fn resultx_flatten_option_test() {
+  should.equal(flatten_option(Some(Some(42))), Some(42))
+  should.equal(flatten_option(Some(None)), None)
+  should.equal(flatten_option(None), None)
+}
+
+pub fn resultx_flatten_result_test() {
+  should.equal(flatten_result(Ok(Ok(42))), Ok(42))
+  should.equal(flatten_result(Ok(Error("error"))), Error("error"))
+  should.equal(flatten_result(Error("outer")), Error("outer"))
+}
+
+pub fn resultx_partition_results_test() {
+  let results = [Ok(1), Error("a"), Ok(2), Error("b")]
+  should.equal(partition_results(results), #([1, 2], ["a", "b"]))
+}
+
+pub fn resultx_partition_options_test() {
+  let opts = [Some(1), None, Some(2), None]
+  should.equal(partition_options(opts), #([1, 2], 2))
+}
+
+pub fn resultx_first_ok_test() {
+  should.equal(first_ok([Error("a"), Ok(42), Ok(100)]), Some(42))
+  should.equal(first_ok([Error("a"), Error("b")]), None)
+}
+
+pub fn resultx_first_some_test() {
+  should.equal(first_some([None, Some(42), Some(100)]), Some(42))
+  should.equal(first_some([None, None]), None)
+}
+
+pub fn resultx_all_ok_test() {
+  should.equal(all_ok([Ok(1), Ok(2), Ok(3)]), Ok([1, 2, 3]))
+  should.equal(all_ok([Ok(1), Error("a"), Ok(3)]), Error("a"))
+}
+
+pub fn resultx_all_some_test() {
+  should.equal(all_some([Some(1), Some(2), Some(3)]), Some([1, 2, 3]))
+  should.equal(all_some([Some(1), None, Some(3)]), None)
+}
+
+pub fn resultx_or_else_test() {
+  should.equal(or_else(Some(42), fn() { Some(0) }), Some(42))
+  should.equal(or_else(None, fn() { Some(0) }), Some(0))
+  should.equal(or_else(None, fn() { None }), None)
+}
+
+pub fn resultx_or_else_result_test() {
+  should.equal(or_else_result(Ok(42), fn() { Ok(0) }), Ok(42))
+  should.equal(or_else_result(Error("a"), fn() { Ok(0) }), Ok(0))
+  should.equal(or_else_result(Error("a"), fn() { Error("b") }), Error("b"))
+}
+
+pub fn resultx_and_then_test() {
+  should.equal(and_then(Some(42), fn(x) { Some(x * 2) }), Some(84))
+  should.equal(and_then(Some(42), fn(_) { None }), None)
+  should.equal(and_then(None, fn(x) { Some(x * 2) }), None)
+}
+
+pub fn resultx_zip_test() {
+  should.equal(zip(Some(1), Some(2)), Some(#(1, 2)))
+  should.equal(zip(Some(1), None), None)
+  should.equal(zip(None, Some(2)), None)
+}
+
+pub fn resultx_zip_result_test() {
+  should.equal(zip_result(Ok(1), Ok(2)), Ok(#(1, 2)))
+  should.equal(zip_result(Ok(1), Error("b")), Error("b"))
+  should.equal(zip_result(Error("a"), Ok(2)), Error("a"))
+}
+
+pub fn resultx_contains_test() {
+  should.equal(contains(Some(42), 42), True)
+  should.equal(contains(Some(42), 100), False)
+  should.equal(contains(None, 42), False)
+}
+
+pub fn resultx_contains_ok_test() {
+  should.equal(contains_ok(Ok(42), 42), True)
+  should.equal(contains_ok(Ok(42), 100), False)
+  should.equal(contains_ok(Error("error"), 42), False)
+}
+
+pub fn resultx_contains_error_test() {
+  should.equal(contains_error(Error("error"), "error"), True)
+  should.equal(contains_error(Error("error"), "other"), False)
+  should.equal(contains_error(Ok(42), "error"), False)
+}
+
+pub fn resultx_ok_err_test() {
+  should.equal(ok(Ok(42)), Some(42))
+  should.equal(ok(Error("error")), None)
+  should.equal(err(Ok(42)), None)
+  should.equal(err(Error("error")), Some("error"))
+}
+
+pub fn resultx_transpose_option_result_test() {
+  should.equal(transpose_option_result(None), Ok(None))
+  should.equal(transpose_option_result(Some(Ok(42))), Ok(Some(42)))
+  should.equal(transpose_option_result(Some(Error("error"))), Error("error"))
+}
+
+pub fn resultx_transpose_result_option_test() {
+  should.equal(transpose_result_option(Ok(None)), None)
+  should.equal(transpose_result_option(Ok(Some(42))), Some(Ok(42)))
+  should.equal(transpose_result_option(Error("error")), Some(Error("error")))
+}
+
+pub fn resultx_fold_ok_test() {
+  should.equal(fold_ok(Ok(42), 0, fn(x, acc) { x + acc }), 42)
+  should.equal(fold_ok(Error("error"), 0, fn(x, acc) { x + acc }), 0)
+}
+
+pub fn resultx_fold_option_test() {
+  should.equal(fold_option(Some(42), 0, fn(x, acc) { x + acc }), 42)
+  should.equal(fold_option(None, 0, fn(x, acc) { x + acc }), 0)
+}

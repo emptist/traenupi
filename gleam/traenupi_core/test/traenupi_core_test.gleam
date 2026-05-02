@@ -620,3 +620,104 @@ pub fn logger_format_error_test() {
 pub fn logger_format_success_test() {
   should.equal(format_success("Upload", "file saved"), "Upload succeeded: file saved")
 }
+
+import traenupi_core/async.{
+  pending, fulfilled, rejected,
+  is_pending, is_fulfilled, is_rejected, is_settled,
+  map, map_error, then, recover,
+  get_or_default,
+  resolve, reject, from_result, to_result,
+  state_to_string,
+} as async
+
+pub fn async_pending_test() {
+  let p = pending()
+  should.equal(is_pending(p), True)
+  should.equal(is_fulfilled(p), False)
+  should.equal(is_rejected(p), False)
+}
+
+pub fn async_fulfilled_test() {
+  let p = fulfilled(42)
+  should.equal(is_pending(p), False)
+  should.equal(is_fulfilled(p), True)
+  should.equal(is_rejected(p), False)
+  should.equal(async.get(p), Some(42))
+}
+
+pub fn async_rejected_test() {
+  let p = rejected("error")
+  should.equal(is_pending(p), False)
+  should.equal(is_fulfilled(p), False)
+  should.equal(is_rejected(p), True)
+  should.equal(async.get_error(p), Some("error"))
+}
+
+pub fn async_is_settled_test() {
+  should.equal(is_settled(fulfilled(1)), True)
+  should.equal(is_settled(rejected("err")), True)
+  should.equal(is_settled(pending()), False)
+}
+
+pub fn async_map_test() {
+  let p = fulfilled(10)
+  let p2 = map(p, fn(x) { x * 2 })
+  should.equal(async.get(p2), Some(20))
+}
+
+pub fn async_map_error_test() {
+  let p = rejected("error")
+  let p2 = map_error(p, fn(e) { "wrapped: " <> e })
+  should.equal(async.get_error(p2), Some("wrapped: error"))
+}
+
+pub fn async_then_test() {
+  let p = fulfilled(5)
+  let p2 = then(p, fn(x) { fulfilled(x + 10) })
+  should.equal(async.get(p2), Some(15))
+}
+
+pub fn async_recover_test() {
+  let p = rejected("failed")
+  let p2 = recover(p, fn(e) { fulfilled("recovered from " <> e) })
+  should.equal(async.get(p2), Some("recovered from failed"))
+}
+
+pub fn async_get_or_default_test() {
+  should.equal(get_or_default(fulfilled(42), 0), 42)
+  should.equal(get_or_default(pending(), 0), 0)
+  should.equal(get_or_default(rejected("err"), 0), 0)
+}
+
+pub fn async_resolve_reject_test() {
+  let p1 = resolve(100)
+  should.equal(async.get(p1), Some(100))
+  
+  let p2 = reject("oops")
+  should.equal(async.get_error(p2), Some("oops"))
+}
+
+pub fn async_from_result_test() {
+  let p1 = from_result(Ok(42))
+  should.equal(async.get(p1), Some(42))
+  
+  let p2 = from_result(Error("failed"))
+  should.equal(async.get_error(p2), Some("failed"))
+}
+
+pub fn async_to_result_test() {
+  let r1 = to_result(fulfilled(42))
+  should.equal(r1, Ok(42))
+  
+  let r2 = to_result(rejected("err"))
+  should.equal(r2, Error("err"))
+  
+  let r3 = to_result(pending())
+  should.equal(r3, Error("Promise is still pending"))
+}
+
+pub fn async_state_to_string_test() {
+  should.equal(state_to_string(pending()), "pending")
+  should.equal(state_to_string(fulfilled(1)), "fulfilled")
+  should.equal(state_to_string(rejected("err")), "rejected")
+}

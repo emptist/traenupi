@@ -561,3 +561,62 @@ pub fn http_error_to_string_test() {
   should.equal(http.error_to_string(NetworkError(message: "connection failed")), "Network error: connection failed")
   should.equal(http.error_to_string(StatusError(status: 404, body: "Not Found")), "HTTP 404: Not Found")
 }
+
+import traenupi_core/logger.{
+  Debug, Info, Warn, Error as LogError,
+  new, with_level, with_prefix, with_colors,
+  level_to_string, level_to_priority,
+  format_key_value, format_error, format_success,
+} as logger
+
+pub fn logger_level_to_string_test() {
+  should.equal(level_to_string(Debug), "DEBUG")
+  should.equal(level_to_string(Info), "INFO")
+  should.equal(level_to_string(Warn), "WARN")
+  should.equal(level_to_string(LogError), "ERROR")
+}
+
+pub fn logger_level_to_priority_test() {
+  should.equal(level_to_priority(Debug), 0)
+  should.equal(level_to_priority(Info), 1)
+  should.equal(level_to_priority(Warn), 2)
+  should.equal(level_to_priority(LogError), 3)
+}
+
+pub fn logger_new_test() {
+  let logger = new()
+  should.equal(logger.level, Info)
+  should.equal(logger.prefix, None)
+  should.equal(logger.use_colors, True)
+}
+
+pub fn logger_with_level_test() {
+  let logger = new() |> with_level(Debug)
+  should.equal(logger.level, Debug)
+}
+
+pub fn logger_with_prefix_test() {
+  let logger = new() |> with_prefix("MyApp")
+  case logger.prefix {
+    Some(p) -> should.equal(p, "MyApp")
+    None -> should.equal(True, False)
+  }
+}
+
+pub fn logger_with_colors_test() {
+  let logger = new() |> with_colors(False)
+  should.equal(logger.use_colors, False)
+}
+
+pub fn logger_format_key_value_test() {
+  should.equal(format_key_value("key", "value"), "key=value")
+  should.equal(format_key_value("status", "200"), "status=200")
+}
+
+pub fn logger_format_error_test() {
+  should.equal(format_error("NetworkError", "connection failed"), "NetworkError: connection failed")
+}
+
+pub fn logger_format_success_test() {
+  should.equal(format_success("Upload", "file saved"), "Upload succeeded: file saved")
+}

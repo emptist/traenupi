@@ -721,3 +721,111 @@ pub fn async_state_to_string_test() {
   should.equal(state_to_string(fulfilled(1)), "fulfilled")
   should.equal(state_to_string(rejected("err")), "rejected")
 }
+
+import traenupi_core/fs.{
+  NotFound, PermissionDenied, IoError,
+  File, Directory, Symlink,
+  error_to_string, file_type_to_string,
+  is_file, is_directory,
+  get_extension, get_filename, get_directory,
+  join_path, normalize_path, has_extension,
+  is_absolute_path, is_relative_path,
+  parse_path, resolve_path, change_extension,
+  format_size,
+  type FileInfo,
+} as fs
+
+pub fn fs_error_to_string_test() {
+  should.equal(error_to_string(NotFound("test.txt")), "File not found: test.txt")
+  should.equal(error_to_string(PermissionDenied("secret.txt")), "Permission denied: secret.txt")
+  should.equal(error_to_string(IoError("disk full")), "IO error: disk full")
+}
+
+pub fn fs_file_type_to_string_test() {
+  should.equal(file_type_to_string(File), "file")
+  should.equal(file_type_to_string(Directory), "directory")
+  should.equal(file_type_to_string(Symlink), "symlink")
+  should.equal(file_type_to_string(fs.Unknown), "unknown")
+}
+
+pub fn fs_is_file_test() {
+  let file_info = fs.FileInfo(path: "test.txt", file_type: File, size: 100, is_readonly: False)
+  should.equal(is_file(file_info), True)
+  should.equal(is_directory(file_info), False)
+}
+
+pub fn fs_is_directory_test() {
+  let dir_info = fs.FileInfo(path: "testdir", file_type: Directory, size: 0, is_readonly: False)
+  should.equal(is_directory(dir_info), True)
+  should.equal(is_file(dir_info), False)
+}
+
+pub fn fs_get_extension_test() {
+  should.equal(get_extension("file.txt"), Some("txt"))
+  should.equal(get_extension("archive.tar.gz"), Some("gz"))
+  should.equal(get_extension("noextension"), None)
+  should.equal(get_extension(".hidden"), None)
+}
+
+pub fn fs_get_filename_test() {
+  should.equal(get_filename("/path/to/file.txt"), "file.txt")
+  should.equal(get_filename("simple.txt"), "simple.txt")
+  should.equal(get_filename("/"), "")
+}
+
+pub fn fs_get_directory_test() {
+  should.equal(get_directory("/path/to/file.txt"), "/path/to")
+  should.equal(get_directory("simple.txt"), ".")
+  should.equal(get_directory("/file.txt"), "")
+}
+
+pub fn fs_join_path_test() {
+  should.equal(join_path(["home", "user", "docs"]), "home/user/docs")
+  should.equal(join_path(["a", "b", "c"]), "a/b/c")
+}
+
+pub fn fs_normalize_path_test() {
+  should.equal(normalize_path("/home/./user/../docs"), "home/docs")
+  should.equal(normalize_path("./file.txt"), "file.txt")
+  should.equal(normalize_path("path/to/./file"), "path/to/file")
+}
+
+pub fn fs_has_extension_test() {
+  should.equal(has_extension("file.txt", "txt"), True)
+  should.equal(has_extension("file.txt", "pdf"), False)
+  should.equal(has_extension("noextension", "txt"), False)
+}
+
+pub fn fs_is_absolute_path_test() {
+  should.equal(is_absolute_path("/home/user"), True)
+  should.equal(is_absolute_path("relative/path"), False)
+  should.equal(is_absolute_path("./file"), False)
+}
+
+pub fn fs_is_relative_path_test() {
+  should.equal(is_relative_path("/home/user"), False)
+  should.equal(is_relative_path("relative/path"), True)
+  should.equal(is_relative_path("./file"), True)
+}
+
+pub fn fs_parse_path_test() {
+  should.equal(parse_path("a/b/../c"), [fs.Normal("a"), fs.Normal("b"), fs.ParentDir, fs.Normal("c")])
+  should.equal(parse_path("./file.txt"), [fs.Normal("file.txt")])
+}
+
+pub fn fs_resolve_path_test() {
+  should.equal(resolve_path("/home/user", "docs"), "home/user/docs")
+  should.equal(resolve_path("/home/user", "/absolute"), "absolute")
+}
+
+pub fn fs_change_extension_test() {
+  should.equal(change_extension("file.txt", "pdf"), "file.pdf")
+  should.equal(change_extension("noextension", "txt"), "noextension.txt")
+}
+
+pub fn fs_format_size_test() {
+  should.equal(format_size(512), "512 B")
+  should.equal(format_size(1024), "1 KB")
+  should.equal(format_size(1536), "1 KB")
+  should.equal(format_size(1048576), "1 MB")
+}

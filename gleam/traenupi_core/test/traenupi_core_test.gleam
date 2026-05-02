@@ -284,3 +284,87 @@ pub fn combine_invalid_test() {
   let results = [valid("a"), invalid(validation.EmptyField(field: "x")), valid("c")]
   combine(results) |> should.equal(Invalid(errors: [validation.EmptyField(field: "x")]))
 }
+
+import traenupi_core/property.{
+  for_all, gen_positive_int, gen_non_negative_int, gen_non_empty_string,
+  gen_string, check, default_num_tests,
+}
+
+pub fn property_is_not_empty_always_passes_for_non_empty_test() {
+  let result = for_all(gen_non_empty_string, fn(s) {
+    case is_not_empty(s, "field") {
+      Valid(_) -> True
+      Invalid(_) -> False
+    }
+  }, default_num_tests)
+  check(result) |> should.equal(True)
+}
+
+pub fn property_is_not_empty_fails_for_empty_test() {
+  let result = is_not_empty("", "field")
+  case result {
+    Invalid(_) -> should.equal(True, True)
+    Valid(_) -> should.equal(False, True)
+  }
+}
+
+pub fn property_is_positive_always_passes_for_positive_test() {
+  let result = for_all(gen_positive_int, fn(n) {
+    case is_positive(n, "field") {
+      Valid(_) -> True
+      Invalid(_) -> False
+    }
+  }, default_num_tests)
+  check(result) |> should.equal(True)
+}
+
+pub fn property_is_non_negative_always_passes_for_non_negative_test() {
+  let result = for_all(gen_non_negative_int, fn(n) {
+    case is_non_negative(n, "field") {
+      Valid(_) -> True
+      Invalid(_) -> False
+    }
+  }, default_num_tests)
+  check(result) |> should.equal(True)
+}
+
+pub fn property_string_trim_preserves_content_test() {
+  let result = for_all(gen_non_empty_string, fn(s) {
+    let trimmed = string.trim(s)
+    string.length(trimmed) > 0
+  }, default_num_tests)
+  check(result) |> should.equal(True)
+}
+
+pub fn property_string_append_is_commutative_length_test() {
+  let result = for_all(fn(seed) {
+    let s1 = gen_string(seed)
+    let s2 = gen_string(seed + 1000)
+    #(s1, s2)
+  }, fn(pair) {
+    let #(s1, s2) = pair
+    let combined = s1 <> s2
+    string.length(combined) == string.length(s1) + string.length(s2)
+  }, default_num_tests)
+  check(result) |> should.equal(True)
+}
+
+pub fn property_category_roundtrip_test() {
+  let result = for_all(fn(seed) {
+    let idx = seed % 6
+    case idx {
+      0 -> "action"
+      1 -> "verify"
+      2 -> "reflect"
+      3 -> "anti_weakness"
+      4 -> "checkpoint"
+      _ -> "completion"
+    }
+  }, fn(cat) {
+    case category_from_string(cat) {
+      Some(c) -> category_to_string(c) == cat
+      None -> False
+    }
+  }, default_num_tests)
+  check(result) |> should.equal(True)
+}

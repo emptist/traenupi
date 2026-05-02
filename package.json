@@ -8,10 +8,13 @@
     "traenupi": "./bin/traenupi"
   },
   "scripts": {
-    "build": "tsc",
+    "build:gleam": "cd gleam/traenupi_core && gleam build",
+    "build": "npm run build:gleam && tsc",
+    "build:ts": "tsc",
     "start": "node dist/index.js",
     "dev": "tsc --watch",
     "test": "node --test dist/test/*.test.js",
+    "test:gleam": "cd gleam/traenupi_core && gleam test",
     "predev": "npm run build",
     "dev:link": "rm -rf $(npm root -g)/@nezha/traenupi; npm link; echo === STATUS ===; echo Local:; grep GIT_HASH dist/index.js 2>/dev/null || echo 'No hash'; echo Global:; grep GIT_HASH $(npm root -g)/@nezha/traenupi/dist/index.js 2>/dev/null || echo 'Not installed'",
     "prestatus": "test -d dist || npm run build",

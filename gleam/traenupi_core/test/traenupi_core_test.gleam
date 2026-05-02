@@ -988,3 +988,198 @@ pub fn datetime_start_end_of_day_test() {
   should.equal(end.minute, 59)
   should.equal(end.second, 59)
 }
+
+import traenupi_core/str.{
+  is_empty, is_blank, is_not_empty as str_not_empty, is_not_blank,
+  trim_to_option, default_if_empty, default_if_blank,
+  truncate, truncate_with, capitalize, title_case,
+  camel_case, snake_case, kebab_case, reverse,
+  starts_with_any, ends_with_any,
+  remove_prefix, remove_suffix, ensure_prefix, ensure_suffix,
+  surround, quote, single_quote, unquote,
+  is_numeric, is_alpha, is_alphanumeric,
+  take, drop, take_right, drop_right,
+  first_char, last_char, initials, word_count,
+  ellipsize, humanize, slugify, template,
+  pluralize, possessive,
+} as str_utils
+
+pub fn str_is_empty_test() {
+  should.equal(is_empty(""), True)
+  should.equal(is_empty("hello"), False)
+  should.equal(is_empty("  "), False)
+}
+
+pub fn str_is_blank_test() {
+  should.equal(is_blank(""), True)
+  should.equal(is_blank("  "), True)
+  should.equal(is_blank("\t\n"), True)
+  should.equal(is_blank("hello"), False)
+}
+
+pub fn str_trim_to_option_test() {
+  should.equal(trim_to_option(""), None)
+  should.equal(trim_to_option("  "), None)
+  should.equal(trim_to_option("  hello  "), Some("hello"))
+}
+
+pub fn str_default_if_empty_test() {
+  should.equal(default_if_empty("", "default"), "default")
+  should.equal(default_if_empty("hello", "default"), "hello")
+}
+
+pub fn str_truncate_test() {
+  should.equal(truncate("hello world", 5), "he...")
+  should.equal(truncate("hello", 10), "hello")
+}
+
+pub fn str_truncate_with_test() {
+  should.equal(truncate_with("hello world", 8, "..."), "hello...")
+  should.equal(truncate_with("hello", 10, "..."), "hello")
+}
+
+pub fn str_capitalize_test() {
+  should.equal(capitalize("hello"), "Hello")
+  should.equal(capitalize("HELLO"), "HELLO")
+  should.equal(capitalize(""), "")
+}
+
+pub fn str_title_case_test() {
+  should.equal(title_case("hello world"), "Hello World")
+  should.equal(title_case("the quick brown fox"), "The Quick Brown Fox")
+}
+
+pub fn str_snake_case_test() {
+  should.equal(snake_case("hello world"), "hello_world")
+  should.equal(snake_case("Hello World"), "hello_world")
+}
+
+pub fn str_kebab_case_test() {
+  should.equal(kebab_case("hello world"), "hello-world")
+  should.equal(kebab_case("Hello World"), "hello-world")
+}
+
+pub fn str_reverse_test() {
+  should.equal(reverse("hello"), "olleh")
+  should.equal(reverse(""), "")
+  should.equal(reverse("a"), "a")
+}
+
+pub fn str_starts_with_any_test() {
+  should.equal(starts_with_any("hello world", ["hi", "hello"]), True)
+  should.equal(starts_with_any("hello world", ["hi", "hey"]), False)
+}
+
+pub fn str_ends_with_any_test() {
+  should.equal(ends_with_any("hello.txt", [".txt", ".md"]), True)
+  should.equal(ends_with_any("hello.md", [".txt", ".pdf"]), False)
+}
+
+pub fn str_remove_prefix_test() {
+  should.equal(remove_prefix("hello world", "hello "), "world")
+  should.equal(remove_prefix("hello world", "hi"), "hello world")
+}
+
+pub fn str_remove_suffix_test() {
+  should.equal(remove_suffix("hello.txt", ".txt"), "hello")
+  should.equal(remove_suffix("hello.txt", ".md"), "hello.txt")
+}
+
+pub fn str_ensure_prefix_test() {
+  should.equal(ensure_prefix("world", "hello "), "hello world")
+  should.equal(ensure_prefix("hello world", "hello "), "hello world")
+}
+
+pub fn str_ensure_suffix_test() {
+  should.equal(ensure_suffix("hello", ".txt"), "hello.txt")
+  should.equal(ensure_suffix("hello.txt", ".txt"), "hello.txt")
+}
+
+pub fn str_quote_test() {
+  should.equal(quote("hello"), "\"hello\"")
+  should.equal(single_quote("hello"), "'hello'")
+}
+
+pub fn str_unquote_test() {
+  should.equal(unquote("\"hello\""), "hello")
+  should.equal(unquote("'hello'"), "hello")
+  should.equal(unquote("hello"), "hello")
+}
+
+pub fn str_is_numeric_test() {
+  should.equal(is_numeric("12345"), True)
+  should.equal(is_numeric("12.34"), False)
+  should.equal(is_numeric("abc"), False)
+  should.equal(is_numeric(""), False)
+}
+
+pub fn str_is_alpha_test() {
+  should.equal(is_alpha("hello"), True)
+  should.equal(is_alpha("HelloWorld"), True)
+  should.equal(is_alpha("hello123"), False)
+  should.equal(is_alpha(""), False)
+}
+
+pub fn str_is_alphanumeric_test() {
+  should.equal(is_alphanumeric("hello123"), True)
+  should.equal(is_alphanumeric("HelloWorld"), True)
+  should.equal(is_alphanumeric("hello!"), False)
+  should.equal(is_alphanumeric(""), False)
+}
+
+pub fn str_take_drop_test() {
+  should.equal(take("hello world", 5), "hello")
+  should.equal(drop("hello world", 6), "world")
+  should.equal(take_right("hello world", 5), "world")
+  should.equal(drop_right("hello world", 6), "hello")
+}
+
+pub fn str_first_last_char_test() {
+  should.equal(first_char("hello"), Some("h"))
+  should.equal(first_char(""), None)
+  should.equal(last_char("hello"), Some("o"))
+  should.equal(last_char(""), None)
+}
+
+pub fn str_initials_test() {
+  should.equal(initials("John Doe"), "JD")
+  should.equal(initials("Jane Marie Smith"), "JMS")
+}
+
+pub fn str_word_count_test() {
+  should.equal(word_count("hello world"), 2)
+  should.equal(word_count("the quick brown fox"), 4)
+  should.equal(word_count(""), 0)
+}
+
+pub fn str_ellipsize_test() {
+  should.equal(ellipsize("hello world", 8), "hello...")
+  should.equal(ellipsize("hello", 10), "hello")
+}
+
+pub fn str_humanize_test() {
+  should.equal(humanize("hello_world"), "hello world")
+  should.equal(humanize("hello-world"), "hello world")
+}
+
+pub fn str_slugify_test() {
+  should.equal(slugify("Hello World"), "hello-world")
+  should.equal(slugify("hello_world"), "hello-world")
+}
+
+pub fn str_template_test() {
+  let template_str = "Hello {{name}}, welcome to {{place}}!"
+  let values = [#("name", "Alice"), #("place", "Wonderland")]
+  should.equal(template(template_str, values), "Hello Alice, welcome to Wonderland!")
+}
+
+pub fn str_pluralize_test() {
+  should.equal(pluralize(1, "cat", "cats"), "cat")
+  should.equal(pluralize(2, "cat", "cats"), "cats")
+  should.equal(pluralize(0, "cat", "cats"), "cats")
+}
+
+pub fn str_possessive_test() {
+  should.equal(possessive("John"), "John's")
+  should.equal(possessive("James"), "James'")
+}

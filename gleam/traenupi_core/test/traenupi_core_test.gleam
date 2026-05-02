@@ -1,5 +1,6 @@
 import gleeunit
 import gleeunit/should
+import gleam/dict
 import gleam/list
 import gleam/option.{Some, None}
 import gleam/string
@@ -211,9 +212,9 @@ import traenupi_core/validation.{
   Valid, Invalid,
   is_not_empty, has_min_length, has_max_length, is_in_range,
   is_positive, is_non_negative, is_one_of, is_valid_id,
-  is_valid_category, is_valid_weakness, error_to_string,
+  is_valid_category, is_valid_weakness,
   valid, invalid, combine,
-}
+} as validation
 
 pub fn is_not_empty_test() {
   is_not_empty("hello", "field") |> should.equal(Valid(value: "hello"))
@@ -271,8 +272,8 @@ pub fn is_valid_weakness_test() {
 }
 
 pub fn error_to_string_test() {
-  error_to_string(validation.EmptyField(field: "name")) |> should.equal("name cannot be empty")
-  error_to_string(validation.OutOfRange(field: "age", min: 0, max: 100, actual: 150)) |> should.equal("age must be between 0 and 100, got 150")
+  validation.error_to_string(validation.EmptyField(field: "name")) |> should.equal("name cannot be empty")
+  validation.error_to_string(validation.OutOfRange(field: "age", min: 0, max: 100, actual: 150)) |> should.equal("age must be between 0 and 100, got 150")
 }
 
 pub fn combine_valid_test() {
@@ -475,4 +476,88 @@ pub fn config_to_string_test() {
   let str = to_string(cfg)
   should.equal(string.contains(str, "name"), True)
   should.equal(string.contains(str, "count"), True)
+}
+
+import traenupi_core/http.{
+  Get, Post, Put, Delete,
+  NetworkError, StatusError,
+  get, post,
+  with_header, with_body, with_bearer_token,
+  method_to_string, is_success, is_redirect,
+  is_client_error, is_server_error,
+} as http
+
+pub fn http_method_to_string_test() {
+  should.equal(method_to_string(Get), "GET")
+  should.equal(method_to_string(Post), "POST")
+  should.equal(method_to_string(Put), "PUT")
+  should.equal(method_to_string(Delete), "DELETE")
+}
+
+pub fn http_new_request_test() {
+  let req = get("https://example.com")
+  should.equal(req.method, Get)
+  should.equal(req.url, "https://example.com")
+}
+
+pub fn http_with_header_test() {
+  let req = get("https://example.com") |> with_header("X-Custom", "value")
+  let has_key = dict.has_key(req.headers, "X-Custom")
+  should.equal(has_key, True)
+}
+
+pub fn http_with_body_test() {
+  let req = post("https://example.com") |> with_body("{\"key\": \"value\"}")
+  case req.body {
+    Some(b) -> should.equal(b, "{\"key\": \"value\"}")
+    None -> should.equal(True, False)
+  }
+}
+
+pub fn http_with_bearer_token_test() {
+  let req = get("https://example.com") |> with_bearer_token("my-token")
+  let auth = dict.get(req.headers, "Authorization")
+  case auth {
+    Ok(v) -> should.equal(v, "Bearer my-token")
+    Error(_) -> should.equal(True, False)
+  }
+}
+
+pub fn http_is_success_test() {
+  should.equal(is_success(200), True)
+  should.equal(is_success(201), True)
+  should.equal(is_success(204), True)
+  should.equal(is_success(299), True)
+  should.equal(is_success(300), False)
+  should.equal(is_success(400), False)
+  should.equal(is_success(500), False)
+}
+
+pub fn http_is_redirect_test() {
+  should.equal(is_redirect(301), True)
+  should.equal(is_redirect(302), True)
+  should.equal(is_redirect(399), True)
+  should.equal(is_redirect(200), False)
+  should.equal(is_redirect(400), False)
+}
+
+pub fn http_is_client_error_test() {
+  should.equal(is_client_error(400), True)
+  should.equal(is_client_error(404), True)
+  should.equal(is_client_error(499), True)
+  should.equal(is_client_error(200), False)
+  should.equal(is_client_error(500), False)
+}
+
+pub fn http_is_server_error_test() {
+  should.equal(is_server_error(500), True)
+  should.equal(is_server_error(502), True)
+  should.equal(is_server_error(599), True)
+  should.equal(is_server_error(400), False)
+  should.equal(is_server_error(200), False)
+}
+
+pub fn http_error_to_string_test() {
+  should.equal(http.error_to_string(NetworkError(message: "connection failed")), "Network error: connection failed")
+  should.equal(http.error_to_string(StatusError(status: 404, body: "Not Found")), "HTTP 404: Not Found")
 }

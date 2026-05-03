@@ -2417,3 +2417,641 @@ pub fn json_path_path_to_string_test() {
     _ -> should.equal(False, True)
   }
 }
+
+import traenupi_core/schema.{
+  NullSchema, BoolSchema, NumberSchema, StringSchema, ArraySchema, ObjectSchema,
+  NumberConstraints, StringConstraints, ArrayConstraints, ObjectConstraints,
+  TypeMismatch, MissingField, InvalidValue,
+  validate, with_minimum, with_maximum, with_min_length, with_max_length,
+  one_of, all_of, any_of, not, const_value, enum_values,
+}
+
+pub fn schema_null_test() {
+  should.equal(validate(NullSchema, JsonNull), Ok(Nil))
+  
+  case validate(NullSchema, JsonBool(True)) {
+    Error(TypeMismatch(_, "null", "Bool")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_bool_test() {
+  should.equal(validate(BoolSchema, JsonBool(True)), Ok(Nil))
+  should.equal(validate(BoolSchema, JsonBool(False)), Ok(Nil))
+  
+  case validate(BoolSchema, JsonNumber(1.0)) {
+    Error(TypeMismatch(_, "boolean", "Number")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_number_test() {
+  should.equal(validate(NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  )), JsonNumber(42.0)), Ok(Nil))
+  
+  case validate(NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  )), JsonString("42")) {
+    Error(TypeMismatch(_, "number", "String")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_number_minimum_test() {
+  let schema = NumberSchema(NumberConstraints(
+    minimum: Some(10.0), maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))
+  
+  should.equal(validate(schema, JsonNumber(15.0)), Ok(Nil))
+  should.equal(validate(schema, JsonNumber(10.0)), Ok(Nil))
+  
+  case validate(schema, JsonNumber(5.0)) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_number_maximum_test() {
+  let schema = NumberSchema(NumberConstraints(
+    minimum: None, maximum: Some(100.0), exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))
+  
+  should.equal(validate(schema, JsonNumber(50.0)), Ok(Nil))
+  should.equal(validate(schema, JsonNumber(100.0)), Ok(Nil))
+  
+  case validate(schema, JsonNumber(150.0)) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_number_exclusive_minimum_test() {
+  let schema = NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: Some(0.0), exclusive_maximum: None, multiple_of: None
+  ))
+  
+  should.equal(validate(schema, JsonNumber(1.0)), Ok(Nil))
+  
+  case validate(schema, JsonNumber(0.0)) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_number_multiple_of_test() {
+  let schema = NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: Some(5.0)
+  ))
+  
+  should.equal(validate(schema, JsonNumber(10.0)), Ok(Nil))
+  should.equal(validate(schema, JsonNumber(25.0)), Ok(Nil))
+  
+  case validate(schema, JsonNumber(12.0)) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_string_test() {
+  should.equal(validate(StringSchema(StringConstraints(
+    min_length: None, max_length: None, pattern: None, format: None
+  )), JsonString("hello")), Ok(Nil))
+  
+  case validate(StringSchema(StringConstraints(
+    min_length: None, max_length: None, pattern: None, format: None
+  )), JsonNumber(42.0)) {
+    Error(TypeMismatch(_, "string", "Number")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_string_min_length_test() {
+  let schema = StringSchema(StringConstraints(
+    min_length: Some(3), max_length: None, pattern: None, format: None
+  ))
+  
+  should.equal(validate(schema, JsonString("hello")), Ok(Nil))
+  should.equal(validate(schema, JsonString("abc")), Ok(Nil))
+  
+  case validate(schema, JsonString("hi")) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_string_max_length_test() {
+  let schema = StringSchema(StringConstraints(
+    min_length: None, max_length: Some(5), pattern: None, format: None
+  ))
+  
+  should.equal(validate(schema, JsonString("hi")), Ok(Nil))
+  should.equal(validate(schema, JsonString("hello")), Ok(Nil))
+  
+  case validate(schema, JsonString("hello world")) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_array_test() {
+  should.equal(validate(ArraySchema(ArrayConstraints(
+    items: None, min_items: None, max_items: None, unique_items: False
+  )), JsonArray([JsonNumber(1.0), JsonNumber(2.0)])), Ok(Nil))
+  
+  case validate(ArraySchema(ArrayConstraints(
+    items: None, min_items: None, max_items: None, unique_items: False
+  )), JsonString("not array")) {
+    Error(TypeMismatch(_, "array", "String")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_array_items_test() {
+  let item_schema = NumberSchema(NumberConstraints(
+    minimum: Some(0.0), maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))
+  let schema = ArraySchema(ArrayConstraints(
+    items: Some(item_schema), min_items: None, max_items: None, unique_items: False
+  ))
+  
+  should.equal(validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(2.0)])), Ok(Nil))
+  
+  case validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(-1.0)])) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_array_min_items_test() {
+  let schema = ArraySchema(ArrayConstraints(
+    items: None, min_items: Some(2), max_items: None, unique_items: False
+  ))
+  
+  should.equal(validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(2.0)])), Ok(Nil))
+  should.equal(validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)])), Ok(Nil))
+  
+  case validate(schema, JsonArray([JsonNumber(1.0)])) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_array_max_items_test() {
+  let schema = ArraySchema(ArrayConstraints(
+    items: None, min_items: None, max_items: Some(2), unique_items: False
+  ))
+  
+  should.equal(validate(schema, JsonArray([JsonNumber(1.0)])), Ok(Nil))
+  should.equal(validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(2.0)])), Ok(Nil))
+  
+  case validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)])) {
+    Error(InvalidValue(_, _)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_object_test() {
+  should.equal(validate(ObjectSchema(ObjectConstraints(
+    properties: dict.new(), required: [], additional_properties: None, pattern_properties: dict.new(),
+    min_properties: None, max_properties: None
+  )), JsonObject(dict.new())), Ok(Nil))
+  
+  case validate(ObjectSchema(ObjectConstraints(
+    properties: dict.new(), required: [], additional_properties: None, pattern_properties: dict.new(),
+    min_properties: None, max_properties: None
+  )), JsonArray([])) {
+    Error(TypeMismatch(_, "object", "Array")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_object_required_test() {
+  let schema = ObjectSchema(ObjectConstraints(
+    properties: dict.from_list([#("name", StringSchema(StringConstraints(
+      min_length: None, max_length: None, pattern: None, format: None
+    )))]),
+    required: ["name"],
+    additional_properties: None,
+    pattern_properties: dict.new(),
+    min_properties: None,
+    max_properties: None
+  ))
+  
+  should.equal(validate(schema, JsonObject(dict.from_list([#("name", JsonString("Alice"))]))), Ok(Nil))
+  
+  case validate(schema, JsonObject(dict.new())) {
+    Error(MissingField(_, "name")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_one_of_test() {
+  let schema = one_of([StringSchema(StringConstraints(
+    min_length: None, max_length: None, pattern: None, format: None
+  )), NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))])
+  
+  should.equal(validate(schema, JsonString("hello")), Ok(Nil))
+  should.equal(validate(schema, JsonNumber(42.0)), Ok(Nil))
+  
+  case validate(schema, JsonBool(True)) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_all_of_test() {
+  let schema = all_of([
+    ObjectSchema(ObjectConstraints(
+      properties: dict.from_list([#("name", StringSchema(StringConstraints(
+        min_length: None, max_length: None, pattern: None, format: None
+      )))]),
+      required: ["name"],
+      additional_properties: None,
+      pattern_properties: dict.new(),
+      min_properties: None,
+      max_properties: None
+    )),
+    ObjectSchema(ObjectConstraints(
+      properties: dict.from_list([#("age", NumberSchema(NumberConstraints(
+        minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+      )))]),
+      required: ["age"],
+      additional_properties: None,
+      pattern_properties: dict.new(),
+      min_properties: None,
+      max_properties: None
+    ))
+  ])
+  
+  should.equal(validate(schema, JsonObject(dict.from_list([
+    #("name", JsonString("Alice")),
+    #("age", JsonNumber(30.0))
+  ]))), Ok(Nil))
+  
+  case validate(schema, JsonObject(dict.from_list([#("name", JsonString("Alice"))]))) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_any_of_test() {
+  let schema = any_of([StringSchema(StringConstraints(
+    min_length: None, max_length: None, pattern: None, format: None
+  )), NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))])
+  
+  should.equal(validate(schema, JsonString("hello")), Ok(Nil))
+  should.equal(validate(schema, JsonNumber(42.0)), Ok(Nil))
+  
+  case validate(schema, JsonBool(True)) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_not_test() {
+  let schema = not(BoolSchema)
+  
+  should.equal(validate(schema, JsonString("hello")), Ok(Nil))
+  should.equal(validate(schema, JsonNumber(42.0)), Ok(Nil))
+  
+  case validate(schema, JsonBool(True)) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_const_test() {
+  let schema = const_value(JsonNumber(42.0))
+  
+  should.equal(validate(schema, JsonNumber(42.0)), Ok(Nil))
+  
+  case validate(schema, JsonNumber(43.0)) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_enum_test() {
+  let schema = enum_values([JsonString("red"), JsonString("green"), JsonString("blue")])
+  
+  should.equal(validate(schema, JsonString("red")), Ok(Nil))
+  should.equal(validate(schema, JsonString("green")), Ok(Nil))
+  should.equal(validate(schema, JsonString("blue")), Ok(Nil))
+  
+  case validate(schema, JsonString("yellow")) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_with_minimum_helper_test() {
+  let schema = NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))
+  let updated = with_minimum(schema, 10.0)
+  
+  should.equal(validate(updated, JsonNumber(15.0)), Ok(Nil))
+  
+  case validate(updated, JsonNumber(5.0)) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_with_maximum_helper_test() {
+  let schema = NumberSchema(NumberConstraints(
+    minimum: None, maximum: None, exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))
+  let updated = with_maximum(schema, 100.0)
+  
+  should.equal(validate(updated, JsonNumber(50.0)), Ok(Nil))
+  
+  case validate(updated, JsonNumber(150.0)) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_with_min_length_helper_test() {
+  let schema = StringSchema(StringConstraints(
+    min_length: None, max_length: None, pattern: None, format: None
+  ))
+  let updated = with_min_length(schema, 3)
+  
+  should.equal(validate(updated, JsonString("hello")), Ok(Nil))
+  
+  case validate(updated, JsonString("hi")) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_with_max_length_helper_test() {
+  let schema = StringSchema(StringConstraints(
+    min_length: None, max_length: None, pattern: None, format: None
+  ))
+  let updated = with_max_length(schema, 5)
+  
+  should.equal(validate(updated, JsonString("hi")), Ok(Nil))
+  
+  case validate(updated, JsonString("hello world")) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_unique_items_test() {
+  let schema = ArraySchema(ArrayConstraints(
+    items: None, min_items: None, max_items: None, unique_items: True
+  ))
+  
+  should.equal(validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)])), Ok(Nil))
+  
+  case validate(schema, JsonArray([JsonNumber(1.0), JsonNumber(1.0), JsonNumber(2.0)])) {
+    Error(_) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+import traenupi_core/schema_builder.{
+  schema_to_json, schema_to_string, merge_schemas, make_nullable,
+  string_schema, number_schema, integer_schema, array_schema, object_schema,
+  boolean_schema, null_schema,
+}
+
+pub fn schema_builder_null_test() {
+  let json = schema_to_json(NullSchema)
+  case jsonx.get_field(json, "type") {
+    Ok(JsonString("null")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_bool_test() {
+  let json = schema_to_json(BoolSchema)
+  case jsonx.get_field(json, "type") {
+    Ok(JsonString("boolean")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_number_test() {
+  let json = schema_to_json(number_schema())
+  case jsonx.get_field(json, "type") {
+    Ok(JsonString("number")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_number_with_constraints_test() {
+  let schema = NumberSchema(NumberConstraints(
+    minimum: Some(0.0), maximum: Some(100.0), exclusive_minimum: None, exclusive_maximum: None, multiple_of: None
+  ))
+  let json = schema_to_json(schema)
+  
+  case jsonx.get_field(json, "minimum") {
+    Ok(JsonNumber(0.0)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+  
+  case jsonx.get_field(json, "maximum") {
+    Ok(JsonNumber(100.0)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_string_test() {
+  let json = schema_to_json(string_schema())
+  case jsonx.get_field(json, "type") {
+    Ok(JsonString("string")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_string_with_constraints_test() {
+  let schema = StringSchema(StringConstraints(
+    min_length: Some(1), max_length: Some(100), pattern: Some("^[a-z]+$"), format: None
+  ))
+  let json = schema_to_json(schema)
+  
+  case jsonx.get_field(json, "minLength") {
+    Ok(JsonNumber(1.0)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+  
+  case jsonx.get_field(json, "maxLength") {
+    Ok(JsonNumber(100.0)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+  
+  case jsonx.get_field(json, "pattern") {
+    Ok(JsonString("^[a-z]+$")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_array_test() {
+  let json = schema_to_json(array_schema())
+  case jsonx.get_field(json, "type") {
+    Ok(JsonString("array")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_array_with_items_test() {
+  let schema = ArraySchema(ArrayConstraints(
+    items: Some(string_schema()), min_items: Some(1), max_items: Some(10), unique_items: True
+  ))
+  let json = schema_to_json(schema)
+  
+  case jsonx.get_field(json, "items") {
+    Ok(JsonObject(_)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+  
+  case jsonx.get_field(json, "minItems") {
+    Ok(JsonNumber(1.0)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+  
+  case jsonx.get_field(json, "uniqueItems") {
+    Ok(JsonBool(True)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_object_test() {
+  let json = schema_to_json(object_schema())
+  case jsonx.get_field(json, "type") {
+    Ok(JsonString("object")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_object_with_properties_test() {
+  let schema = ObjectSchema(ObjectConstraints(
+    properties: dict.from_list([#("name", string_schema()), #("age", number_schema())]),
+    required: ["name"],
+    additional_properties: None,
+    pattern_properties: dict.new(),
+    min_properties: None,
+    max_properties: None
+  ))
+  let json = schema_to_json(schema)
+  
+  case jsonx.get_field(json, "properties") {
+    Ok(JsonObject(_)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+  
+  case jsonx.get_field(json, "required") {
+    Ok(JsonArray([JsonString("name")])) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_one_of_test() {
+  let json = schema_to_json(one_of([string_schema(), number_schema()]))
+  case jsonx.get_field(json, "oneOf") {
+    Ok(JsonArray(schemas)) -> should.equal(list.length(schemas), 2)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_all_of_test() {
+  let json = schema_to_json(all_of([string_schema(), number_schema()]))
+  case jsonx.get_field(json, "allOf") {
+    Ok(JsonArray(schemas)) -> should.equal(list.length(schemas), 2)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_any_of_test() {
+  let json = schema_to_json(any_of([string_schema(), number_schema()]))
+  case jsonx.get_field(json, "anyOf") {
+    Ok(JsonArray(schemas)) -> should.equal(list.length(schemas), 2)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_not_test() {
+  let json = schema_to_json(not(BoolSchema))
+  case jsonx.get_field(json, "not") {
+    Ok(JsonObject(_)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_const_test() {
+  let json = schema_to_json(const_value(JsonString("hello")))
+  case jsonx.get_field(json, "const") {
+    Ok(JsonString("hello")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_enum_test() {
+  let json = schema_to_json(enum_values([JsonString("a"), JsonString("b")]))
+  case jsonx.get_field(json, "enum") {
+    Ok(JsonArray(values)) -> should.equal(list.length(values), 2)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_to_string_test() {
+  let str = schema_to_string(string_schema())
+  should.equal(string.contains(str, "string"), True)
+}
+
+pub fn schema_builder_merge_test() {
+  let merged = merge_schemas(string_schema(), number_schema())
+  case schema_to_json(merged) {
+    JsonObject(obj) -> {
+      case dict.get(obj, "allOf") {
+        Ok(JsonArray(schemas)) -> should.equal(list.length(schemas), 2)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_nullable_test() {
+  let nullable = make_nullable(string_schema())
+  case schema_to_json(nullable) {
+    JsonObject(obj) -> {
+      case dict.get(obj, "anyOf") {
+        Ok(JsonArray(schemas)) -> should.equal(list.length(schemas), 2)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_integer_test() {
+  let json = schema_to_json(integer_schema())
+  case jsonx.get_field(json, "type") {
+    Ok(JsonString("number")) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+  
+  case jsonx.get_field(json, "multipleOf") {
+    Ok(JsonNumber(1.0)) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn schema_builder_helper_functions_test() {
+  should.equal(schema_to_json(string_schema()) |> jsonx.get_field("type"), Ok(JsonString("string")))
+  should.equal(schema_to_json(number_schema()) |> jsonx.get_field("type"), Ok(JsonString("number")))
+  should.equal(schema_to_json(boolean_schema()) |> jsonx.get_field("type"), Ok(JsonString("boolean")))
+  should.equal(schema_to_json(null_schema()) |> jsonx.get_field("type"), Ok(JsonString("null")))
+  should.equal(schema_to_json(array_schema()) |> jsonx.get_field("type"), Ok(JsonString("array")))
+  should.equal(schema_to_json(object_schema()) |> jsonx.get_field("type"), Ok(JsonString("object")))
+}

@@ -239,3 +239,125 @@ const result = psqlQuery(`SELECT * FROM users WHERE name = '${userInput}'`);
 import { querySafe } from "./common/db-safe.js";
 const result = await querySafe("SELECT * FROM users WHERE name = $1", [userInput]);
 ```
+
+## Current Capabilities
+
+### AI Session Survival
+
+**Problem**: Trae IDE marks AI sessions as "completed" when it detects task completion signals.
+
+**Solution**: TraeNuPI keeps sessions alive through:
+- **`traenupi start`** - Initialize session with context from previous sessions
+- **`traenupi tellme "question"`** - Ask baby AI for guidance
+- **Knowledge persistence** - Store learnings across sessions
+- **Reminders** - Schedule time-based nudges
+
+### Gleam Core Library (20 Modules, 343+ Tests)
+
+| Module | Purpose | Lines |
+|--------|---------|-------|
+| `jsonx.gleam` | JSON encoding/decoding | ~200 |
+| `schema.gleam` | JSON Schema validation | ~300 |
+| `json_path.gleam` | JSON Path queries | ~150 |
+| `schema_builder.gleam` | Schema → JSON conversion | ~280 |
+| `validation.gleam` | Input validation | ~100 |
+| `resultx.gleam` | Result combinators | ~80 |
+| `async.gleam` | Promise utilities | ~100 |
+| `cache.gleam` | TTL & LRU cache | ~200 |
+| `collection.gleam` | Queue, Stack, Deque | ~150 |
+| `datetime.gleam` | Date/time handling | ~150 |
+| `state.gleam` | State management | ~120 |
+| `cli.gleam` | CLI parsing | ~100 |
+| `config.gleam` | Config parsing | ~100 |
+| `http.gleam` | HTTP client | ~120 |
+| `fs.gleam` | File system utilities | ~80 |
+| `logger.gleam` | Structured logging | ~80 |
+| `str.gleam` | String utilities | ~100 |
+| `utils.gleam` | General utilities | ~80 |
+| `property.gleam` | Property testing | ~60 |
+
+### TypeScript Integration
+
+Full bidirectional integration via `gleam-bridge.ts`:
+
+```typescript
+import { category_to_string, format_prompt } from "./common/gleam-bridge.js";
+import { new_activity_stats, increment_questions } from "./common/gleam-bridge.js";
+import { jsonDecode, jsonEncode, jsonGetField } from "./common/gleam-bridge.js";
+```
+
+### Skills System (4 Skills)
+
+| Skill | Purpose |
+|-------|---------|
+| `inter-reviewer` | Peer code review |
+| `keep-alive` | Prevent session completion |
+| `session-survival` | Recover context from previous sessions |
+| `traenupi-awakener` | Wake up new AI sessions |
+
+## Vision
+
+### Phase 1: The Foundation (Current ✅)
+
+- ✅ Gleam core library with 20 modules
+- ✅ TypeScript bridge with full integration
+- ✅ 343+ passing tests
+- ✅ CLI commands for session management
+- ✅ Skills for AI survival
+
+### Phase 2: The Intelligence Layer (Next 3-6 months)
+
+- 🎯 Smarter baby AI that learns from past conversations
+- 🎯 Context awareness (project structure, recent changes)
+- 🎯 Proactive assistance (detect stuck AI, suggest knowledge)
+
+### Phase 3: The Collaboration Layer (6-12 months)
+
+- 🔮 Multi-AI orchestration
+- 🔮 Knowledge graph with relationships
+- 🔮 Learning from feedback
+
+### Phase 4: The Autonomous Layer (12-24 months)
+
+- 🚀 Self-improving system
+- 🚀 Autonomous task completion
+- 🚀 Cross-project learning
+
+### Ultimate Goal
+
+**TraeNuPI should become the "operating system" for AI agents in Trae IDE:**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Trae IDE AI Agent                        │
+├─────────────────────────────────────────────────────────────┤
+│   ┌─────────────┐  ┌─────────────┐  ┌─────────────┐       │
+│   │   Memory    │  │  Learning   │  │Collaboration│       │
+│   │  (Gleam)    │  │  (Gleam)    │  │  (Gleam)    │       │
+│   └─────────────┘  └─────────────┘  └─────────────┘       │
+│                                                             │
+│   ┌─────────────────────────────────────────────────┐     │
+│   │              TraeNuPI Core (Gleam)               │     │
+│   │  json | schema | validation | state | async     │     │
+│   │  cache | collection | datetime | cli | http     │     │
+│   └─────────────────────────────────────────────────┘     │
+│                                                             │
+│   ┌─────────────────────────────────────────────────┐     │
+│   │           TypeScript Bridge (gleam-bridge.ts)   │     │
+│   └─────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                    ┌─────────────────┐
+                    │    Nezha DB     │
+                    │ (shared memory) │
+                    └─────────────────┘
+```
+
+## Development
+
+See [DEVELOPMENT.md](./DEVELOPMENT.md) for:
+- Architecture details
+- Adding new Gleam modules
+- Testing guidelines
+- Contributing guide

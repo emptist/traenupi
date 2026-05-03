@@ -2217,3 +2217,203 @@ pub fn lru_max_size_test() {
   
   should.equal(lru_size(c), 2)
 }
+
+import traenupi_core/json_path.{
+  query, query_one, path_to_string,
+  Root, Field, Index, Wildcard, RecursiveField, Slice,
+  JsonPath,
+} as json_path
+
+pub fn json_path_parse_root_test() {
+  should.equal(json_path.parse("$"), Ok(JsonPath(segments: [Root])))
+}
+
+pub fn json_path_parse_field_test() {
+  should.equal(json_path.parse("$.name"), Ok(JsonPath(segments: [Root, Field("name")])))
+  should.equal(json_path.parse("$.user.name"), Ok(JsonPath(segments: [Root, Field("user"), Field("name")])))
+}
+
+pub fn json_path_parse_index_test() {
+  should.equal(json_path.parse("$[0]"), Ok(JsonPath(segments: [Root, Index(0)])))
+  should.equal(json_path.parse("$[1]"), Ok(JsonPath(segments: [Root, Index(1)])))
+  should.equal(json_path.parse("$.items[2]"), Ok(JsonPath(segments: [Root, Field("items"), Index(2)])))
+}
+
+pub fn json_path_parse_wildcard_test() {
+  should.equal(json_path.parse("$.*"), Ok(JsonPath(segments: [Root, Wildcard])))
+  should.equal(json_path.parse("$[*]"), Ok(JsonPath(segments: [Root, Wildcard])))
+}
+
+pub fn json_path_parse_recursive_test() {
+  should.equal(json_path.parse("$..name"), Ok(JsonPath(segments: [Root, RecursiveField("name")])))
+}
+
+pub fn json_path_parse_slice_test() {
+  let result = json_path.parse("$[1:3]")
+  case result {
+    Ok(JsonPath(segments: [Root, Slice(start: Some(1), stop: Some(3), step: None)])) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+    Error(_) -> should.equal(False, True)
+  }
+  
+  case json_path.parse("$[::2]") {
+    Ok(JsonPath(segments: [Root, Slice(start: None, stop: None, step: Some(2))])) -> should.equal(True, True)
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_parse_quoted_field_test() {
+  should.equal(json_path.parse("$['field name']"), Ok(JsonPath(segments: [Root, Field("field name")])))
+}
+
+pub fn json_path_parse_error_test() {
+  case json_path.parse("") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+  
+  case json_path.parse("no_dollar") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_field_test() {
+  let json = JsonObject(dict.from_list([#("name", JsonString("Alice"))]))
+  case json_path.parse("$.name") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok([JsonString("Alice")]) -> should.equal(True, True)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_nested_test() {
+  let json = JsonObject(dict.from_list([
+    #("user", JsonObject(dict.from_list([
+      #("name", JsonString("Bob")),
+    ]))),
+  ]))
+  case json_path.parse("$.user.name") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok([JsonString("Bob")]) -> should.equal(True, True)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_index_test() {
+  let json = JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)])
+  case json_path.parse("$[1]") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok([JsonNumber(2.0)]) -> should.equal(True, True)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_negative_index_test() {
+  let json = JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)])
+  case json_path.parse("$[-1]") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok([JsonNumber(3.0)]) -> should.equal(True, True)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_wildcard_object_test() {
+  let json = JsonObject(dict.from_list([
+    #("a", JsonNumber(1.0)),
+    #("b", JsonNumber(2.0)),
+    #("c", JsonNumber(3.0)),
+  ]))
+  case json_path.parse("$.*") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok(values) -> should.equal(list.length(values), 3)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_wildcard_array_test() {
+  let json = JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)])
+  case json_path.parse("$[*]") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok(values) -> should.equal(list.length(values), 3)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_recursive_test() {
+  let json = JsonObject(dict.from_list([
+    #("name", JsonString("root")),
+    #("child", JsonObject(dict.from_list([
+      #("name", JsonString("child1")),
+      #("nested", JsonObject(dict.from_list([
+        #("name", JsonString("nested1")),
+      ]))),
+    ]))),
+  ]))
+  case json_path.parse("$..name") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok(values) -> should.equal(list.length(values), 3)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_slice_test() {
+  let json = JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0), JsonNumber(4.0), JsonNumber(5.0)])
+  case json_path.parse("$[1:3]") {
+    Ok(path) -> {
+      case query(path, json) {
+        Ok(values) -> should.equal(list.length(values), 2)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_query_one_test() {
+  let json = JsonObject(dict.from_list([#("value", JsonNumber(42.0))]))
+  case json_path.parse("$.value") {
+    Ok(path) -> {
+      case query_one(path, json) {
+        Ok(JsonNumber(42.0)) -> should.equal(True, True)
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn json_path_path_to_string_test() {
+  case json_path.parse("$.store.books[0].title") {
+    Ok(path) -> should.equal(path_to_string(path), "$.store.books[0].title")
+    _ -> should.equal(False, True)
+  }
+}

@@ -577,3 +577,25 @@ fn parse_object_continue(key: String, value: JsonValue, json: String, acc: List(
     Ok(#(c, _)) -> Error(InvalidJson(message: "Expected ',' or '}' in object, got: " <> c))
   }
 }
+
+pub fn type_name(value: JsonValue) -> String {
+  case value {
+    JsonNull -> "Null"
+    JsonBool(_) -> "Bool"
+    JsonNumber(_) -> "Number"
+    JsonString(_) -> "String"
+    JsonArray(_) -> "Array"
+    JsonObject(_) -> "Object"
+  }
+}
+
+pub fn array_to_list(value: JsonValue) -> List(JsonValue) {
+  case value {
+    JsonArray(arr) -> arr
+    _ -> []
+  }
+}
+
+pub fn list_to_array(values: List(JsonValue)) -> JsonValue {
+  JsonArray(values)
+}

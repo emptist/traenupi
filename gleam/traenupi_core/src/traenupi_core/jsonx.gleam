@@ -2,7 +2,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/list
 import gleam/dict.{type Dict}
 import gleam/result
-import gleam/string
+import gleam/string as str
 import gleam/int
 import gleam/float
 
@@ -20,6 +20,10 @@ pub type JsonError {
   MissingField(field: String)
   InvalidJson(message: String)
   IndexOutOfBounds(index: Int, length: Int)
+}
+
+pub type DecodeResult {
+  DecodeResult(JsonValue, String)
 }
 
 pub fn null() -> JsonValue {
@@ -204,7 +208,7 @@ pub fn get_index_as(
 fn nth(lst: List(a), index: Int) -> Result(a, Nil) {
   case lst, index {
     [], _ -> Error(Nil)
-    [first, ..rest], 0 -> Ok(first)
+    [first, ..], 0 -> Ok(first)
     [_, ..rest], n -> nth(rest, n - 1)
   }
 }
@@ -343,7 +347,7 @@ pub fn encode(value: JsonValue) -> String {
     JsonString(s) -> "\"" <> escape_string(s) <> "\""
     JsonArray(arr) -> {
       let encoded_items = list.map(arr, encode)
-      "[" <> string.join(encoded_items, ",") <> "]"
+      "[" <> str.join(encoded_items, ",") <> "]"
     }
     JsonObject(obj) -> {
       let pairs = 
@@ -352,16 +356,224 @@ pub fn encode(value: JsonValue) -> String {
           let #(key, val) = pair
           "\"" <> escape_string(key) <> "\":" <> encode(val)
         })
-      "{" <> string.join(pairs, ",") <> "}"
+      "{" <> str.join(pairs, ",") <> "}"
     }
   }
 }
 
 fn escape_string(s: String) -> String {
   s
-  |> string.replace("\\", "\\\\")
-  |> string.replace("\"", "\\\"")
-  |> string.replace("\n", "\\n")
-  |> string.replace("\r", "\\r")
-  |> string.replace("\t", "\\t")
+  |> str.replace("\\", "\\\\")
+  |> str.replace("\"", "\\\"")
+  |> str.replace("\n", "\\n")
+  |> str.replace("\r", "\\r")
+  |> str.replace("\t", "\\t")
+}
+
+pub fn decode(json: String) -> Result(JsonValue, JsonError) {
+  let json = trim(json)
+  case parse_value(json) {
+    Ok(DecodeResult(value, remaining)) -> {
+      let remaining = trim(remaining)
+      case str.is_empty(remaining) {
+        True -> Ok(value)
+        False -> Error(InvalidJson(message: "Unexpected characters after JSON value: " <> remaining))
+      }
+    }
+    Error(e) -> Error(e)
+  }
+}
+
+fn trim(s: String) -> String {
+  trim_left(s)
+}
+
+fn trim_left(s: String) -> String {
+  case str.pop_grapheme(s) {
+    Error(_) -> ""
+    Ok(#(c, rest)) -> {
+      case c == " " || c == "\n" || c == "\r" || c == "\t" {
+        True -> trim_left(rest)
+        False -> s
+      }
+    }
+  }
+}
+
+fn parse_value(json: String) -> Result(DecodeResult, JsonError) {
+  case str.pop_grapheme(json) {
+    Error(_) -> Error(InvalidJson(message: "Empty input"))
+    Ok(#("n", rest)) -> parse_null(rest)
+    Ok(#("t", rest)) -> parse_true(rest)
+    Ok(#("f", rest)) -> parse_false(rest)
+    Ok(#("\"", rest)) -> parse_string(rest)
+    Ok(#("[", rest)) -> parse_array(rest)
+    Ok(#("{", rest)) -> parse_object(rest)
+    Ok(#(c, _)) -> {
+      case is_digit(c) || c == "-" {
+        True -> parse_number(json)
+        False -> Error(InvalidJson(message: "Unexpected character: " <> c))
+      }
+    }
+  }
+}
+
+fn is_digit(c: String) -> Bool {
+  c == "0" || c == "1" || c == "2" || c == "3" || c == "4"
+  || c == "5" || c == "6" || c == "7" || c == "8" || c == "9"
+}
+
+fn parse_null(json: String) -> Result(DecodeResult, JsonError) {
+  case str.slice(json, 0, 3) {
+    "ull" -> Ok(DecodeResult(JsonNull, str.drop_start(json, 3)))
+    _ -> Error(InvalidJson(message: "Expected 'null'"))
+  }
+}
+
+fn parse_true(json: String) -> Result(DecodeResult, JsonError) {
+  case str.slice(json, 0, 3) {
+    "rue" -> Ok(DecodeResult(JsonBool(True), str.drop_start(json, 3)))
+    _ -> Error(InvalidJson(message: "Expected 'true'"))
+  }
+}
+
+fn parse_false(json: String) -> Result(DecodeResult, JsonError) {
+  case str.slice(json, 0, 4) {
+    "alse" -> Ok(DecodeResult(JsonBool(False), str.drop_start(json, 4)))
+    _ -> Error(InvalidJson(message: "Expected 'false'"))
+  }
+}
+
+fn parse_number(json: String) -> Result(DecodeResult, JsonError) {
+  let #(num_str, remaining) = extract_number(json)
+  case int.parse(num_str) {
+    Ok(n) -> Ok(DecodeResult(JsonNumber(int.to_float(n)), remaining))
+    Error(_) -> {
+      case float.parse(num_str) {
+        Ok(n) -> Ok(DecodeResult(JsonNumber(n), remaining))
+        Error(_) -> Error(InvalidJson(message: "Invalid number: " <> num_str))
+      }
+    }
+  }
+}
+
+fn extract_number(json: String) -> #(String, String) {
+  extract_number_chars(json, "")
+}
+
+fn extract_number_chars(json: String, acc: String) -> #(String, String) {
+  case str.pop_grapheme(json) {
+    Error(_) -> #(acc, "")
+    Ok(#(c, rest)) -> {
+      case is_digit(c) || c == "-" || c == "+" || c == "." || c == "e" || c == "E" {
+        True -> extract_number_chars(rest, acc <> c)
+        False -> #(acc, json)
+      }
+    }
+  }
+}
+
+fn parse_string(json: String) -> Result(DecodeResult, JsonError) {
+  parse_string_chars(json, "")
+}
+
+fn parse_string_chars(json: String, acc: String) -> Result(DecodeResult, JsonError) {
+  case str.pop_grapheme(json) {
+    Error(_) -> Error(InvalidJson(message: "Unterminated string"))
+    Ok(#("\\", rest)) -> {
+      case str.pop_grapheme(rest) {
+        Error(_) -> Error(InvalidJson(message: "Incomplete escape sequence"))
+        Ok(#(escaped, rest2)) -> {
+          let char = case escaped {
+            "n" -> "\n"
+            "r" -> "\r"
+            "t" -> "\t"
+            "\"" -> "\""
+            "\\" -> "\\"
+            _ -> escaped
+          }
+          parse_string_chars(rest2, acc <> char)
+        }
+      }
+    }
+    Ok(#("\"", rest)) -> Ok(DecodeResult(JsonString(acc), rest))
+    Ok(#(c, rest)) -> parse_string_chars(rest, acc <> c)
+  }
+}
+
+fn parse_array(json: String) -> Result(DecodeResult, JsonError) {
+  let json = trim(json)
+  case str.pop_grapheme(json) {
+    Error(_) -> Error(InvalidJson(message: "Unterminated array"))
+    Ok(#("]", rest)) -> Ok(DecodeResult(JsonArray([]), rest))
+    Ok(_) -> parse_array_items(json, [])
+  }
+}
+
+fn parse_array_items(json: String, acc: List(JsonValue)) -> Result(DecodeResult, JsonError) {
+  case parse_value(json) {
+    Ok(DecodeResult(v, rest)) -> {
+      let rest = trim(rest)
+      case str.pop_grapheme(rest) {
+        Error(_) -> Error(InvalidJson(message: "Unterminated array"))
+        Ok(#(",", rest2)) -> parse_array_items(trim(rest2), [v, ..acc])
+        Ok(#("]", rest2)) -> Ok(DecodeResult(JsonArray(list.reverse([v, ..acc])), rest2))
+        Ok(#(c, _)) -> Error(InvalidJson(message: "Expected ',' or ']' in array, got: " <> c))
+      }
+    }
+    Error(e) -> Error(e)
+  }
+}
+
+fn parse_object(json: String) -> Result(DecodeResult, JsonError) {
+  let json = trim(json)
+  case str.pop_grapheme(json) {
+    Error(_) -> Error(InvalidJson(message: "Unterminated object"))
+    Ok(#("}", rest)) -> Ok(DecodeResult(JsonObject(dict.new()), rest))
+    Ok(_) -> parse_object_pairs(json, [])
+  }
+}
+
+fn parse_object_pairs(json: String, acc: List(#(String, JsonValue))) -> Result(DecodeResult, JsonError) {
+  let json = trim(json)
+  case str.pop_grapheme(json) {
+    Error(_) -> Error(InvalidJson(message: "Unterminated object"))
+    Ok(#("\"", rest)) -> {
+      case parse_string(rest) {
+        Ok(DecodeResult(JsonString(key), rest2)) -> {
+          parse_object_value(key, rest2, acc)
+        }
+        Ok(DecodeResult(_, _)) -> Error(InvalidJson(message: "Expected string key"))
+        Error(e) -> Error(e)
+      }
+    }
+    Ok(#(c, _)) -> Error(InvalidJson(message: "Expected string key in object, got: " <> c))
+  }
+}
+
+fn parse_object_value(key: String, json: String, acc: List(#(String, JsonValue))) -> Result(DecodeResult, JsonError) {
+  let json = trim(json)
+  case str.pop_grapheme(json) {
+    Error(_) -> Error(InvalidJson(message: "Expected ':' after key"))
+    Ok(#(":", rest3)) -> {
+      let rest3 = trim(rest3)
+      case parse_value(rest3) {
+        Ok(DecodeResult(v, rest4)) -> {
+          parse_object_continue(key, v, rest4, acc)
+        }
+        Error(e) -> Error(e)
+      }
+    }
+    Ok(#(c, _)) -> Error(InvalidJson(message: "Expected ':' after key, got: " <> c))
+  }
+}
+
+fn parse_object_continue(key: String, value: JsonValue, json: String, acc: List(#(String, JsonValue))) -> Result(DecodeResult, JsonError) {
+  let json = trim(json)
+  case str.pop_grapheme(json) {
+    Error(_) -> Error(InvalidJson(message: "Unterminated object"))
+    Ok(#(",", rest5)) -> parse_object_pairs(trim(rest5), [#(key, value), ..acc])
+    Ok(#("}", rest5)) -> Ok(DecodeResult(JsonObject(dict.from_list([#(key, value), ..acc])), rest5))
+    Ok(#(c, _)) -> Error(InvalidJson(message: "Expected ',' or '}' in object, got: " <> c))
+  }
 }

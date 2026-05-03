@@ -567,7 +567,7 @@ import traenupi_core/logger.{
   new, with_level, with_prefix, with_colors,
   level_to_string, level_to_priority,
   format_key_value, format_error, format_success,
-} as logger
+}
 
 pub fn logger_level_to_string_test() {
   should.equal(level_to_string(Debug), "DEBUG")
@@ -723,16 +723,15 @@ pub fn async_state_to_string_test() {
 }
 
 import traenupi_core/fs.{
+  error_to_string, file_type_to_string,
   NotFound, PermissionDenied, IoError,
   File, Directory, Symlink,
-  error_to_string, file_type_to_string,
   is_file, is_directory,
   get_extension, get_filename, get_directory,
   join_path, normalize_path, has_extension,
   is_absolute_path, is_relative_path,
   parse_path, resolve_path, change_extension,
   format_size,
-  type FileInfo,
 } as fs
 
 pub fn fs_error_to_string_test() {
@@ -831,9 +830,8 @@ pub fn fs_format_size_test() {
 }
 
 import traenupi_core/datetime.{
-  type Month, type Weekday, type DateTime,
-  January, February, March, April, May, June, July, August, September, October, November, December,
-  Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday,
+  January, February, March, April, June, September, December,
+  Monday, Wednesday, Thursday, Sunday,
   month_to_int, int_to_month, weekday_to_int, int_to_weekday,
   month_to_string, weekday_to_string, month_to_short, weekday_to_short,
   is_leap_year, days_in_month, is_valid_date, is_valid_time,
@@ -990,19 +988,19 @@ pub fn datetime_start_end_of_day_test() {
 }
 
 import traenupi_core/str.{
-  is_empty, is_blank, is_not_empty as str_not_empty, is_not_blank,
-  trim_to_option, default_if_empty, default_if_blank,
+  is_empty, is_blank,
+  trim_to_option, default_if_empty,
   truncate, truncate_with, capitalize, title_case,
-  camel_case, snake_case, kebab_case, reverse,
+  snake_case, kebab_case, reverse,
   starts_with_any, ends_with_any,
   remove_prefix, remove_suffix, ensure_prefix, ensure_suffix,
-  surround, quote, single_quote, unquote,
+  quote, single_quote, unquote,
   is_numeric, is_alpha, is_alphanumeric,
   take, drop, take_right, drop_right,
   first_char, last_char, initials, word_count,
   ellipsize, humanize, slugify, template,
   pluralize, possessive,
-} as str_utils
+}
 
 pub fn str_is_empty_test() {
   should.equal(is_empty(""), True)
@@ -1260,13 +1258,13 @@ pub fn resultx_map_option_test() {
 pub fn resultx_filter_option_test() {
   should.equal(filter_option(Some(42), fn(x) { x > 10 }), Some(42))
   should.equal(filter_option(Some(5), fn(x) { x > 10 }), None)
-  should.equal(filter_option(None, fn(x) { True }), None)
+  should.equal(filter_option(None, fn(_x) { True }), None)
 }
 
 pub fn resultx_filter_result_test() {
   should.equal(filter_result(Ok(42), fn(x) { x > 10 }, "too small"), Ok(42))
   should.equal(filter_result(Ok(5), fn(x) { x > 10 }, "too small"), Error("too small"))
-  should.equal(filter_result(Error("error"), fn(x) { True }, "too small"), Error("error"))
+  should.equal(filter_result(Error("error"), fn(_x) { True }, "too small"), Error("error"))
 }
 
 pub fn resultx_flatten_option_test() {
@@ -1397,7 +1395,7 @@ import traenupi_core/jsonx.{
   map_json_array, filter_json_array, keys, values,
   merge_objects, set_field, remove_field,
   array_length, object_length, append_to_array, prepend_to_array,
-  path_get, path_set, encode,
+  path_get, encode, decode,
 }
 
 pub fn jsonx_null_test() {
@@ -1645,14 +1643,212 @@ pub fn jsonx_encode_test() {
   should.equal(encode(JsonObject(dict.new())), "{}")
 }
 
+pub fn jsonx_decode_null_test() {
+  should.equal(decode("null"), Ok(JsonNull))
+}
+
+pub fn jsonx_decode_bool_test() {
+  should.equal(decode("true"), Ok(JsonBool(True)))
+  should.equal(decode("false"), Ok(JsonBool(False)))
+}
+
+pub fn jsonx_decode_number_test() {
+  should.equal(decode("42"), Ok(JsonNumber(42.0)))
+  should.equal(decode("3.14"), Ok(JsonNumber(3.14)))
+  should.equal(decode("-10"), Ok(JsonNumber(-10.0)))
+}
+
+pub fn jsonx_decode_string_test() {
+  should.equal(decode("\"hello\""), Ok(JsonString("hello")))
+  should.equal(decode("\"\""), Ok(JsonString("")))
+  should.equal(decode("\"hello world\""), Ok(JsonString("hello world")))
+}
+
+pub fn jsonx_decode_array_test() {
+  should.equal(decode("[]"), Ok(JsonArray([])))
+  should.equal(decode("[1]"), Ok(JsonArray([JsonNumber(1.0)])))
+  should.equal(decode("[1, 2, 3]"), Ok(JsonArray([JsonNumber(1.0), JsonNumber(2.0), JsonNumber(3.0)])))
+}
+
+pub fn jsonx_decode_object_test() {
+  should.equal(decode("{}"), Ok(JsonObject(dict.new())))
+  
+  let result = decode("{\"a\": 1}")
+  case result {
+    Ok(JsonObject(obj)) -> {
+      should.equal(dict.get(obj, "a"), Ok(JsonNumber(1.0)))
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_nested_test() {
+  let result = decode("{\"user\": {\"name\": \"Alice\", \"age\": 30}}")
+  case result {
+    Ok(JsonObject(obj)) -> {
+      case dict.get(obj, "user") {
+        Ok(JsonObject(user)) -> {
+          should.equal(dict.get(user, "name"), Ok(JsonString("Alice")))
+          should.equal(dict.get(user, "age"), Ok(JsonNumber(30.0)))
+        }
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_error_test() {
+  case decode("") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+  
+  case decode("invalid") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_whitespace_test() {
+  should.equal(decode("  null  "), Ok(JsonNull))
+  should.equal(decode("\ttrue\n"), Ok(JsonBool(True)))
+  should.equal(decode("  42  "), Ok(JsonNumber(42.0)))
+  should.equal(decode("  \"hello\"  "), Ok(JsonString("hello")))
+  should.equal(decode("  [  ]  "), Ok(JsonArray([])))
+  should.equal(decode("  {  }  "), Ok(JsonObject(dict.new())))
+}
+
+pub fn jsonx_decode_negative_numbers_test() {
+  should.equal(decode("-42"), Ok(JsonNumber(-42.0)))
+  should.equal(decode("-3.14"), Ok(JsonNumber(-3.14)))
+  should.equal(decode("-0"), Ok(JsonNumber(0.0)))
+}
+
+pub fn jsonx_decode_escape_sequences_test() {
+  should.equal(decode("\"hello\\nworld\""), Ok(JsonString("hello\nworld")))
+  should.equal(decode("\"tab\\there\""), Ok(JsonString("tab\there")))
+  should.equal(decode("\"quote\\\"here\""), Ok(JsonString("quote\"here")))
+  should.equal(decode("\"backslash\\\\here\""), Ok(JsonString("backslash\\here")))
+  should.equal(decode("\"\\r\\n\""), Ok(JsonString("\r\n")))
+}
+
+pub fn jsonx_decode_mixed_array_test() {
+  let result = decode("[null, true, 42, \"hello\"]")
+  case result {
+    Ok(JsonArray(arr)) -> {
+      should.equal(list.length(arr), 4)
+      case list.first(arr) {
+        Ok(JsonNull) -> should.equal(True, True)
+        _ -> should.equal(False, True)
+      }
+      case list.rest(arr) {
+        Ok(rest) -> {
+          case list.first(rest) {
+            Ok(JsonBool(True)) -> should.equal(True, True)
+            _ -> should.equal(False, True)
+          }
+        }
+        Error(_) -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_deeply_nested_test() {
+  let result = decode("{\"a\": {\"b\": {\"c\": {\"d\": 1}}}}")
+  case result {
+    Ok(JsonObject(obj)) -> {
+      case dict.get(obj, "a") {
+        Ok(JsonObject(a)) -> {
+          case dict.get(a, "b") {
+            Ok(JsonObject(b)) -> {
+              case dict.get(b, "c") {
+                Ok(JsonObject(c)) -> {
+                  should.equal(dict.get(c, "d"), Ok(JsonNumber(1.0)))
+                }
+                _ -> should.equal(False, True)
+              }
+            }
+            _ -> should.equal(False, True)
+          }
+        }
+        _ -> should.equal(False, True)
+      }
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_array_of_arrays_test() {
+  let result = decode("[[1, 2], [3, 4], [5, 6]]")
+  case result {
+    Ok(JsonArray(arr)) -> {
+      should.equal(list.length(arr), 3)
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_object_multiple_fields_test() {
+  let result = decode("{\"a\": 1, \"b\": 2, \"c\": 3}")
+  case result {
+    Ok(JsonObject(obj)) -> {
+      should.equal(dict.get(obj, "a"), Ok(JsonNumber(1.0)))
+      should.equal(dict.get(obj, "b"), Ok(JsonNumber(2.0)))
+      should.equal(dict.get(obj, "c"), Ok(JsonNumber(3.0)))
+    }
+    _ -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_trailing_comma_error_test() {
+  case decode("[1, 2, 3,]") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+  
+  case decode("{\"a\": 1,}") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_unterminated_string_error_test() {
+  case decode("\"hello") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+  
+  case decode("\"hello\\n") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_unterminated_array_error_test() {
+  case decode("[1, 2") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
+pub fn jsonx_decode_unterminated_object_error_test() {
+  case decode("{\"a\": 1") {
+    Error(_) -> should.equal(True, True)
+    Ok(_) -> should.equal(False, True)
+  }
+}
+
 import traenupi_core/collection.{
-  Queue, new_queue, queue_from_list, queue_to_list,
+  new_queue, queue_from_list, queue_to_list,
   enqueue, dequeue, queue_peek, queue_length, queue_is_empty,
   queue_map, queue_filter, queue_fold,
-  Stack, new_stack, stack_from_list, stack_to_list,
+  new_stack, stack_from_list, stack_to_list,
   push, pop, stack_peek, stack_length, stack_is_empty,
   stack_map, stack_filter, stack_fold, stack_reverse,
-  Deque, new_deque, deque_from_list, deque_to_list,
+  new_deque, deque_from_list, deque_to_list,
   push_front, push_back, pop_front, pop_back,
   deque_peek_front, deque_peek_back, deque_length, deque_is_empty,
   deque_map, deque_filter, deque_fold,
@@ -1827,10 +2023,10 @@ pub fn deque_fold_test() {
 }
 
 import traenupi_core/cache.{
-  Cache, new_cache, cache_get, cache_set, cache_set_with_ttl,
+  new_cache, cache_get, cache_set, cache_set_with_ttl,
   cache_delete, cache_clear, cache_size, cache_has, cache_keys,
   cache_cleanup, cache_to_list,
-  LRUCache, new_lru_cache, lru_get, lru_set, lru_delete,
+  new_lru_cache, lru_get, lru_set, lru_delete,
   lru_clear, lru_size, lru_has, lru_keys,
 }
 

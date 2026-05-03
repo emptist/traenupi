@@ -70,7 +70,35 @@ import {
   error_to_string,
 } from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/validation.mjs";
 
-import { toList } from "../../gleam/traenupi_core/build/dev/javascript/gleam_stdlib/gleam.mjs";
+import {
+  JsonValue$JsonNull,
+  JsonValue$JsonBool,
+  JsonValue$JsonNumber,
+  JsonValue$JsonString,
+  JsonValue$JsonArray,
+  JsonValue$JsonObject,
+  type JsonValue$,
+  type JsonError$,
+  null$ as jsonNull,
+  bool as jsonBool,
+  int as jsonInt,
+  float as jsonFloat,
+  string as jsonString,
+  array as jsonArray,
+  object as jsonObject,
+  encode as jsonEncode,
+  decode as jsonDecode,
+  get_field as jsonGetField,
+  get_index as jsonGetIndex,
+  is_null as jsonIsNull,
+  is_bool as jsonIsBool,
+  is_number as jsonIsNumber,
+  is_string as jsonIsString,
+  is_array as jsonIsArray,
+  is_object as jsonIsObject,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/jsonx.mjs";
+
+import { toList, Ok, Error as GleamError, type Result } from "../../gleam/traenupi_core/build/dev/javascript/gleam_stdlib/gleam.mjs";
 
 export function demoGleamIntegration(): void {
   console.log("=== Gleam + TypeScript Integration Demo ===\n");
@@ -158,6 +186,83 @@ export function demoCliParsing(): void {
   console.log(get_help_text());
 }
 
+export function demoJsonParsing(): void {
+  console.log("=== JSON Parsing Demo ===\n");
+
+  const testCases = [
+    "null",
+    "true",
+    "false",
+    "42",
+    "3.14",
+    "-10",
+    "\"hello world\"",
+    "[1, 2, 3]",
+    "{\"name\": \"Alice\", \"age\": 30}",
+    "{\"nested\": {\"deep\": {\"value\": 123}}}",
+  ];
+
+  console.log("Decoding JSON strings:");
+  for (const json of testCases) {
+    const result = jsonDecode(json);
+    if (result.isOk()) {
+      const encoded = jsonEncode((result as Ok<JsonValue$, JsonError$>)[0]);
+      console.log(`  "${json}" -> ${encoded}`);
+    } else {
+      console.log(`  "${json}" -> Error: ${JSON.stringify((result as GleamError<JsonValue$, JsonError$>)[0])}`);
+    }
+  }
+
+  console.log("\nBuilding JSON values:");
+  const nullVal = jsonNull();
+  const boolVal = jsonBool(true);
+  const numVal = jsonInt(42);
+  const strVal = jsonString("hello");
+  const arrVal = jsonArray(toList([jsonInt(1), jsonInt(2), jsonInt(3)]));
+  const objVal = jsonObject(toList([
+    ["name", jsonString("Alice")],
+    ["age", jsonInt(30)],
+    ["active", jsonBool(true)],
+  ]));
+
+  console.log(`  null: ${jsonEncode(nullVal)}`);
+  console.log(`  bool: ${jsonEncode(boolVal)}`);
+  console.log(`  number: ${jsonEncode(numVal)}`);
+  console.log(`  string: ${jsonEncode(strVal)}`);
+  console.log(`  array: ${jsonEncode(arrVal)}`);
+  console.log(`  object: ${jsonEncode(objVal)}`);
+
+  console.log("\nType checking:");
+  console.log(`  is_null(null): ${jsonIsNull(nullVal)}`);
+  console.log(`  is_bool(true): ${jsonIsBool(boolVal)}`);
+  console.log(`  is_number(42): ${jsonIsNumber(numVal)}`);
+  console.log(`  is_string("hello"): ${jsonIsString(strVal)}`);
+  console.log(`  is_array([1,2,3]): ${jsonIsArray(arrVal)}`);
+  console.log(`  is_object({...}): ${jsonIsObject(objVal)}`);
+
+  console.log("\nField access:");
+  const fieldResult = jsonGetField(objVal, "name");
+  if (fieldResult.isOk()) {
+    console.log(`  get_field(obj, "name"): ${jsonEncode((fieldResult as Ok<JsonValue$, JsonError$>)[0])}`);
+  }
+
+  console.log("\nError handling:");
+  const errorCases = [
+    "",
+    "invalid",
+    "{\"a\":}",
+    "[1, 2, 3,]",
+  ];
+  for (const json of errorCases) {
+    const result = jsonDecode(json);
+    if (!result.isOk()) {
+      console.log(`  "${json}" -> Error (expected)`);
+    } else {
+      console.log(`  "${json}" -> Unexpected success!`);
+    }
+  }
+}
+
 export {
   PromptCategory$Action,
   PromptCategory$Verify,
@@ -213,4 +318,29 @@ export {
   is_valid_category,
   is_valid_weakness,
   error_to_string,
+  JsonValue$JsonNull,
+  JsonValue$JsonBool,
+  JsonValue$JsonNumber,
+  JsonValue$JsonString,
+  JsonValue$JsonArray,
+  JsonValue$JsonObject,
+  type JsonValue$,
+  type JsonError$,
+  jsonNull,
+  jsonBool,
+  jsonInt,
+  jsonFloat,
+  jsonString,
+  jsonArray,
+  jsonObject,
+  jsonEncode,
+  jsonDecode,
+  jsonGetField,
+  jsonGetIndex,
+  jsonIsNull,
+  jsonIsBool,
+  jsonIsNumber,
+  jsonIsString,
+  jsonIsArray,
+  jsonIsObject,
 };

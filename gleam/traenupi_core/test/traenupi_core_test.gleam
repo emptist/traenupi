@@ -3055,3 +3055,555 @@ pub fn schema_builder_helper_functions_test() {
   should.equal(schema_to_json(array_schema()) |> jsonx.get_field("type"), Ok(JsonString("array")))
   should.equal(schema_to_json(object_schema()) |> jsonx.get_field("type"), Ok(JsonString("object")))
 }
+
+import traenupi_core/knowledge.{
+  new_graph, new_entry, with_tags, add_entry, remove_entry,
+  get_entry, find_by_key, find_by_tag, find_by_category,
+  search, count_entries, get_all_tags, get_all_categories,
+}
+
+pub fn knowledge_new_graph_test() {
+  let graph = new_graph()
+  should.equal(count_entries(graph), 0)
+}
+
+pub fn knowledge_add_entry_test() {
+  let graph = new_graph()
+  let entry = new_entry("test_key", "test_value", "test_category")
+  let graph = add_entry(graph, entry)
+  
+  should.equal(count_entries(graph), 1)
+  
+  let found = get_entry(graph, entry.id)
+  case found {
+    Some(e) -> {
+      should.equal(e.key, "test_key")
+      should.equal(e.value, "test_value")
+      should.equal(e.category, "test_category")
+    }
+    None -> should.fail()
+  }
+}
+
+pub fn knowledge_with_tags_test() {
+  let entry = new_entry("key", "value", "category")
+  let entry = with_tags(entry, ["tag1", "tag2"])
+  
+  should.equal(entry.tags, ["tag1", "tag2"])
+}
+
+pub fn knowledge_find_by_key_test() {
+  let graph = new_graph()
+  let entry1 = new_entry("key1", "value1", "category1")
+  let entry2 = new_entry("key1", "value2", "category2")
+  let entry3 = new_entry("key2", "value3", "category1")
+  
+  let graph = add_entry(graph, entry1)
+  let graph = add_entry(graph, entry2)
+  let graph = add_entry(graph, entry3)
+  
+  let found = find_by_key(graph, "key1")
+  should.equal(list.length(found), 2)
+  
+  let found2 = find_by_key(graph, "key2")
+  should.equal(list.length(found2), 1)
+  
+  let found3 = find_by_key(graph, "key3")
+  should.equal(list.length(found3), 0)
+}
+
+pub fn knowledge_find_by_tag_test() {
+  let graph = new_graph()
+  let entry1 = new_entry("key1", "value1", "category1") |> with_tags(["tag1", "tag2"])
+  let entry2 = new_entry("key2", "value2", "category2") |> with_tags(["tag2", "tag3"])
+  
+  let graph = add_entry(graph, entry1)
+  let graph = add_entry(graph, entry2)
+  
+  let found = find_by_tag(graph, "tag1")
+  should.equal(list.length(found), 1)
+  
+  let found2 = find_by_tag(graph, "tag2")
+  should.equal(list.length(found2), 2)
+  
+  let found3 = find_by_tag(graph, "tag4")
+  should.equal(list.length(found3), 0)
+}
+
+pub fn knowledge_find_by_category_test() {
+  let graph = new_graph()
+  let entry1 = new_entry("key1", "value1", "category1")
+  let entry2 = new_entry("key2", "value2", "category1")
+  let entry3 = new_entry("key3", "value3", "category2")
+  
+  let graph = add_entry(graph, entry1)
+  let graph = add_entry(graph, entry2)
+  let graph = add_entry(graph, entry3)
+  
+  let found = find_by_category(graph, "category1")
+  should.equal(list.length(found), 2)
+  
+  let found2 = find_by_category(graph, "category2")
+  should.equal(list.length(found2), 1)
+}
+
+pub fn knowledge_search_test() {
+  let graph = new_graph()
+  let entry1 = new_entry("hello", "world", "greeting")
+  let entry2 = new_entry("foo", "bar hello", "test")
+  let entry3 = new_entry("test", "value", "hello")
+  
+  let graph = add_entry(graph, entry1)
+  let graph = add_entry(graph, entry2)
+  let graph = add_entry(graph, entry3)
+  
+  let found = search(graph, "hello")
+  should.equal(list.length(found), 3)
+  
+  let found2 = search(graph, "world")
+  should.equal(list.length(found2), 1)
+}
+
+pub fn knowledge_remove_entry_test() {
+  let graph = new_graph()
+  let entry = new_entry("key", "value", "category")
+  let graph = add_entry(graph, entry)
+  
+  should.equal(count_entries(graph), 1)
+  
+  case remove_entry(graph, entry.id) {
+    Ok(graph) -> should.equal(count_entries(graph), 0)
+    Error(_) -> should.fail()
+  }
+}
+
+pub fn knowledge_get_all_tags_test() {
+  let graph = new_graph()
+  let entry1 = new_entry("key1", "value1", "cat1") |> with_tags(["tag1", "tag2"])
+  let entry2 = new_entry("key2", "value2", "cat2") |> with_tags(["tag2", "tag3"])
+  
+  let graph = add_entry(graph, entry1)
+  let graph = add_entry(graph, entry2)
+  
+  let tags = get_all_tags(graph)
+  should.equal(list.length(tags), 3)
+}
+
+pub fn knowledge_get_all_categories_test() {
+  let graph = new_graph()
+  let entry1 = new_entry("key1", "value1", "cat1")
+  let entry2 = new_entry("key2", "value2", "cat2")
+  let entry3 = new_entry("key3", "value3", "cat1")
+  
+  let graph = add_entry(graph, entry1)
+  let graph = add_entry(graph, entry2)
+  let graph = add_entry(graph, entry3)
+  
+  let categories = get_all_categories(graph)
+  should.equal(list.length(categories), 2)
+}
+
+import traenupi_core/reflection.{
+  new_reflection, with_task, with_learning, with_issue, with_suggestion,
+  with_praise, with_scores, with_type, with_sentiment,
+  new_store, store_reflection, get_reflection, get_all_reflections,
+  get_reflections_by_agent, get_reflections_by_type, count_reflections,
+  reflection_type_to_string, reflection_type_from_string,
+  sentiment_to_string, sentiment_from_string,
+  severity_to_string, severity_from_string,
+  TaskCompletion, CodeReview, LearningReflection, IssueReflection, Improvement, Question,
+  Positive, Negative, Neutral, Mixed,
+  Critical, High, Medium, Low,
+}
+
+pub fn reflection_new_test() {
+  let reflection = new_reflection("Test summary", "agent-1")
+  should.equal(reflection.summary, "Test summary")
+  should.equal(reflection.agent_id, "agent-1")
+  should.equal(reflection.learnings, [])
+  should.equal(reflection.issues, [])
+}
+
+pub fn reflection_with_task_test() {
+  let reflection = new_reflection("Test", "agent-1")
+  let reflection = with_task(reflection, "task-123", "Task Title")
+  
+  case reflection.task_id {
+    Some(id) -> should.equal(id, "task-123")
+    None -> should.fail()
+  }
+  
+  case reflection.task_title {
+    Some(title) -> should.equal(title, "Task Title")
+    None -> should.fail()
+  }
+}
+
+pub fn reflection_with_learning_test() {
+  let reflection = new_reflection("Test", "agent-1")
+  let reflection = with_learning(reflection, "Testing", "Always write tests")
+  
+  should.equal(list.length(reflection.learnings), 1)
+}
+
+pub fn reflection_with_issue_test() {
+  let reflection = new_reflection("Test", "agent-1")
+  let reflection = with_issue(reflection, High, "src/main.ts", "Type error")
+  
+  should.equal(list.length(reflection.issues), 1)
+}
+
+pub fn reflection_with_scores_test() {
+  let reflection = new_reflection("Test", "agent-1")
+  let result = with_scores(reflection, 85, 90, 75, 80)
+  
+  case result {
+    Ok(r) -> {
+      case r.overall_score {
+        Some(score) -> should.equal(score, 85)
+        None -> should.fail()
+      }
+    }
+    Error(_) -> should.fail()
+  }
+}
+
+pub fn reflection_invalid_score_test() {
+  let reflection = new_reflection("Test", "agent-1")
+  let result = with_scores(reflection, 150, 90, 75, 80)
+  
+  case result {
+    Ok(_) -> should.fail()
+    Error(_) -> should.equal(True, True)
+  }
+}
+
+pub fn reflection_type_conversion_test() {
+  should.equal(reflection_type_to_string(TaskCompletion), "task_completion")
+  should.equal(reflection_type_to_string(CodeReview), "code_review")
+  should.equal(reflection_type_to_string(LearningReflection), "learning")
+  
+  should.equal(reflection_type_from_string("task_completion"), Some(TaskCompletion))
+  should.equal(reflection_type_from_string("unknown"), None)
+}
+
+pub fn sentiment_conversion_test() {
+  should.equal(sentiment_to_string(Positive), "positive")
+  should.equal(sentiment_to_string(Negative), "negative")
+  should.equal(sentiment_to_string(Neutral), "neutral")
+  
+  should.equal(sentiment_from_string("positive"), Some(Positive))
+  should.equal(sentiment_from_string("unknown"), None)
+}
+
+pub fn severity_conversion_test() {
+  should.equal(severity_to_string(Critical), "critical")
+  should.equal(severity_to_string(High), "high")
+  should.equal(severity_to_string(Medium), "medium")
+  should.equal(severity_to_string(Low), "low")
+  
+  should.equal(severity_from_string("critical"), Some(Critical))
+  should.equal(severity_from_string("unknown"), None)
+}
+
+pub fn reflection_store_test() {
+  let store = new_store()
+  should.equal(count_reflections(store), 0)
+  
+  let reflection = new_reflection("Test", "agent-1")
+  let store = store_reflection(store, reflection)
+  
+  should.equal(count_reflections(store), 1)
+  
+  case get_reflection(store, reflection.id) {
+    Some(r) -> should.equal(r.summary, "Test")
+    None -> should.fail()
+  }
+}
+
+pub fn reflection_get_by_agent_test() {
+  let store = new_store()
+  let r1 = new_reflection("Test 1", "agent-1")
+  let r2 = new_reflection("Test 2", "agent-2")
+  let r3 = new_reflection("Test 3", "agent-1")
+  
+  let store = store_reflection(store, r1)
+  let store = store_reflection(store, r2)
+  let store = store_reflection(store, r3)
+  
+  let agent1_reflections = get_reflections_by_agent(store, "agent-1")
+  should.equal(list.length(agent1_reflections), 2)
+  
+  let agent2_reflections = get_reflections_by_agent(store, "agent-2")
+  should.equal(list.length(agent2_reflections), 1)
+}
+
+pub fn reflection_get_by_type_test() {
+  let store = new_store()
+  let r1 = new_reflection("Test 1", "agent-1") |> with_type(_, TaskCompletion)
+  let r2 = new_reflection("Test 2", "agent-1") |> with_type(_, CodeReview)
+  let r3 = new_reflection("Test 3", "agent-1") |> with_type(_, TaskCompletion)
+  
+  let store = store_reflection(store, r1)
+  let store = store_reflection(store, r2)
+  let store = store_reflection(store, r3)
+  
+  let completion_reflections = get_reflections_by_type(store, TaskCompletion)
+  should.equal(list.length(completion_reflections), 2)
+  
+  let review_reflections = get_reflections_by_type(store, CodeReview)
+  should.equal(list.length(review_reflections), 1)
+}
+
+import traenupi_core/event_bus.{
+  new_bus, subscribe, unsubscribe, publish, get_history, get_subscriptions,
+  get_subscription_count, clear, clear_history,
+  event_type_to_string, event_type_from_string, event_to_json,
+  TaskStarted, TaskCompleted, TaskFailed, TaskRetry,
+  SchedulerHeartbeat, SchedulerPaused, SchedulerResumed,
+  AgentRegistered, AgentUnregistered, AgentError,
+  SystemStarted, SystemStopped, HealthCheck, CustomEvent,
+}
+
+pub fn event_bus_new_test() {
+  let bus = new_bus()
+  should.equal(get_subscription_count(bus), 0)
+}
+
+pub fn event_type_conversion_test() {
+  should.equal(event_type_to_string(TaskStarted), "task:started")
+  should.equal(event_type_to_string(TaskCompleted), "task:completed")
+  should.equal(event_type_to_string(TaskFailed), "task:failed")
+  should.equal(event_type_to_string(CustomEvent("custom")), "custom")
+  
+  should.equal(event_type_from_string("task:started"), TaskStarted)
+  should.equal(event_type_from_string("task:completed"), TaskCompleted)
+  should.equal(event_type_from_string("unknown"), CustomEvent("unknown"))
+}
+
+pub fn event_bus_subscribe_test() {
+  let bus = new_bus()
+  let #(bus, _id) = subscribe(bus, TaskStarted, fn(_) { Nil })
+  
+  should.equal(get_subscription_count(bus), 1)
+}
+
+pub fn event_bus_unsubscribe_test() {
+  let bus = new_bus()
+  let #(bus, id) = subscribe(bus, TaskStarted, fn(_) { Nil })
+  
+  should.equal(get_subscription_count(bus), 1)
+  
+  let bus = unsubscribe(bus, id)
+  should.equal(get_subscription_count(bus), 0)
+}
+
+pub fn event_bus_publish_test() {
+  let bus = new_bus()
+  let bus = publish(bus, TaskStarted, "test data")
+  
+  let history = get_history(bus, None, 10)
+  should.equal(list.length(history), 1)
+}
+
+pub fn event_bus_history_filter_test() {
+  let bus = new_bus()
+  let bus = publish(bus, TaskStarted, "data1")
+  let bus = publish(bus, TaskCompleted, "data2")
+  let bus = publish(bus, TaskStarted, "data3")
+  
+  let all_history = get_history(bus, None, 10)
+  should.equal(list.length(all_history), 3)
+  
+  let started_history = get_history(bus, Some(TaskStarted), 10)
+  should.equal(list.length(started_history), 2)
+  
+  let completed_history = get_history(bus, Some(TaskCompleted), 10)
+  should.equal(list.length(completed_history), 1)
+}
+
+pub fn event_bus_clear_test() {
+  let bus = new_bus()
+  let #(bus, _) = subscribe(bus, TaskStarted, fn(_) { Nil })
+  let bus = publish(bus, TaskStarted, "data")
+  
+  let bus = clear(bus)
+  should.equal(get_subscription_count(bus), 0)
+}
+
+pub fn event_bus_clear_history_test() {
+  let bus = new_bus()
+  let bus = publish(bus, TaskStarted, "data")
+  
+  let history_before = get_history(bus, None, 10)
+  should.equal(list.length(history_before), 1)
+  
+  let bus = clear_history(bus)
+  let history_after = get_history(bus, None, 10)
+  should.equal(list.length(history_after), 0)
+}
+
+pub fn event_to_json_test() {
+  let bus = new_bus()
+  let bus = publish(bus, TaskStarted, "test")
+  
+  let history = get_history(bus, None, 1)
+  case list.first(history) {
+    Ok(event) -> {
+      let json = event_to_json(event)
+      should.equal(string.contains(json, "task:started"), True)
+    }
+    Error(_) -> should.fail()
+  }
+}
+
+import traenupi_core/identity.{
+  new_context, with_project, with_git_hash, with_source, with_branch,
+  with_session, with_inner, generate_semantic_id, create_identity,
+  new_store as new_identity_store, store_identity, get_identity, list_identities,
+  get_identities_by_project, get_identities_by_source, count_identities,
+  source_to_string, source_from_string, identity_to_json,
+  parse_identity_id, is_session_identity, is_global_identity, is_inner_identity,
+  Nezha, Opencode, Trae, External, Mcp, Unknown as UnknownSource,
+}
+
+pub fn identity_new_context_test() {
+  let context = new_context("/home/user/project", "fingerprint123")
+  should.equal(context.cwd, "/home/user/project")
+  should.equal(context.machine_fingerprint, "fingerprint123")
+  should.equal(context.inner, False)
+}
+
+pub fn identity_with_project_test() {
+  let context = new_context("/home/user/project", "fp")
+  let context = with_project(context, "my-project")
+  
+  case context.project {
+    Some(p) -> should.equal(p, "my-project")
+    None -> should.fail()
+  }
+}
+
+pub fn identity_source_conversion_test() {
+  should.equal(source_to_string(Nezha), "nezha")
+  should.equal(source_to_string(Opencode), "opencode")
+  should.equal(source_to_string(Trae), "trae")
+  should.equal(source_to_string(UnknownSource), "unknown")
+  
+  should.equal(source_from_string("nezha"), Nezha)
+  should.equal(source_from_string("opencode"), Opencode)
+  should.equal(source_from_string("unknown"), UnknownSource)
+}
+
+pub fn identity_generate_session_id_test() {
+  let context = new_context("/home/user/project", "fp")
+  let context = with_project(context, "my-project")
+  let context = with_source(context, Nezha)
+  
+  let id = generate_semantic_id(context)
+  should.equal(string.starts_with(id, "S-"), True)
+  should.equal(string.contains(id, "my-project"), True)
+}
+
+pub fn identity_generate_session_id_with_session_test() {
+  let context = new_context("/home/user/project", "fp")
+  let context = with_project(context, "my-project")
+  let context = with_source(context, Nezha)
+  let context = with_session(context, "session123")
+  
+  let id = generate_semantic_id(context)
+  should.equal(string.starts_with(id, "S-"), True)
+  should.equal(string.contains(id, "session123"), True)
+}
+
+pub fn identity_generate_global_id_test() {
+  let context = new_context("/home/user/project", "fp123")
+  let context = with_source(context, Nezha)
+  
+  let id = generate_semantic_id(context)
+  should.equal(string.starts_with(id, "G-"), True)
+  should.equal(string.contains(id, "fp123"), True)
+}
+
+pub fn identity_generate_inner_id_test() {
+  let context = new_context("/home/user/project", "fp")
+  let context = with_project(context, "my-project")
+  let context = with_inner(context, "llama3.2:3b")
+  
+  let id = generate_semantic_id(context)
+  should.equal(string.starts_with(id, "I-"), True)
+  should.equal(string.contains(id, "llama3.2:3b"), True)
+}
+
+pub fn identity_create_test() {
+  let context = new_context("/home/user/project", "fp")
+  let context = with_project(context, "my-project")
+  let context = with_source(context, Nezha)
+  
+  let identity = create_identity(context)
+  should.equal(string.starts_with(identity.id, "S-"), True)
+  
+  case identity.project {
+    Some(p) -> should.equal(p, "my-project")
+    None -> should.fail()
+  }
+}
+
+pub fn identity_store_test() {
+  let store = new_identity_store()
+  should.equal(count_identities(store), 0)
+  
+  let context = new_context("/home/user/project", "fp")
+  let context = with_project(context, "my-project")
+  let identity = create_identity(context)
+  
+  let store = store_identity(store, identity)
+  should.equal(count_identities(store), 1)
+  
+  case get_identity(store, identity.id) {
+    Some(i) -> should.equal(i.id, identity.id)
+    None -> should.fail()
+  }
+}
+
+pub fn identity_get_by_project_test() {
+  let store = new_identity_store()
+  
+  let ctx1 = new_context("/home/user/p1", "fp") |> with_project(_, "project1") |> with_source(_, Nezha)
+  let ctx2 = new_context("/home/user/p2", "fp") |> with_project(_, "project2") |> with_source(_, Nezha)
+  let ctx3 = new_context("/home/user/p1", "fp") |> with_project(_, "project1") |> with_source(_, Trae)
+  
+  let store = store_identity(store, create_identity(ctx1))
+  let store = store_identity(store, create_identity(ctx2))
+  let store = store_identity(store, create_identity(ctx3))
+  
+  let p1_identities = get_identities_by_project(store, "project1")
+  should.equal(list.length(p1_identities), 2)
+  
+  let p2_identities = get_identities_by_project(store, "project2")
+  should.equal(list.length(p2_identities), 1)
+}
+
+pub fn identity_type_check_test() {
+  should.equal(is_session_identity("S-nezha-project"), True)
+  should.equal(is_session_identity("G-nezha-cwd-fp"), False)
+  should.equal(is_global_identity("G-nezha-cwd-fp"), True)
+  should.equal(is_global_identity("S-nezha-project"), False)
+  should.equal(is_inner_identity("I-model-project"), True)
+  should.equal(is_inner_identity("S-nezha-project"), False)
+}
+
+pub fn identity_parse_id_test() {
+  let parsed = parse_identity_id("S-nezha-project-session")
+  case parsed {
+    Some(#(source, project, session)) -> {
+      should.equal(source, "nezha")
+      should.equal(project, "project")
+      case session {
+        Some(s) -> should.equal(s, "session")
+        None -> should.fail()
+      }
+    }
+    None -> should.fail()
+  }
+}

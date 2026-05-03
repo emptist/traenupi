@@ -144,7 +144,7 @@ export function generateTriggerPhrases(skill: SkillRecord): string[] {
   return [...new Set(allPhrases)];
 }
 
-export function scanSkills(projectId: string = "nezha"): SkillScanResult[] {
+export function scanSkills(projectId: string = "traenupi"): SkillScanResult[] {
   const output = psqlQuery(
     `SELECT id, name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE project_id = '${projectId}' ORDER BY name;`,
     { silent: true }

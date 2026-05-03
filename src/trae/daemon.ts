@@ -39,22 +39,22 @@ export function checkMeetingNotifications(): void {
   } catch {}
 }
 
-export function checkNezhaFeatures(): void {
+export function checkTraeNuPIFeatures(): void {
   try {
     const features = [
-      "nezha tasks - 列出当前任务",
-      "nezha task-add <title> - 添加新任务",
-      "nezha issue-add <title> - 添加问题",
-      "nezha meeting discuss <topic> <desc> - 创建AI讨论",
-      "nezha skill list - 列出所有技能",
-      "nezha learn <insight> - 学习洞察",
-      "nezha areflect <text> - 创建学习+任务+问题",
+      "traenupi tasks - 列出当前任务",
+      "traenupi task-add <title> - 添加新任务",
+      "traenupi reflect add <summary> - 添加反思",
+      "traenupi know cat:key <value> - 存储知识",
+      "traenupi identity - 显示AI身份",
+      "traenupi tellme <question> - 询问Baby AI",
+      "traenupi know search <term> - 搜索知识",
     ];
 
     const lastReminder = psqlQuery(`
       SELECT created_at FROM memory
       WHERE source = 'traenupi'
-      AND tags @> ARRAY['nezha', 'features', 'reminder']
+      AND tags @> ARRAY['traenupi', 'features', 'reminder']
       ORDER BY created_at DESC
       LIMIT 1;
     `, { silent: true });
@@ -65,13 +65,13 @@ export function checkNezhaFeatures(): void {
 
     if (hoursSinceLastReminder >= 4) {
       const randomFeature = features[Math.floor(Math.random() * features.length)];
-      console.log("\n🧠 Nezha Feature Reminder:");
+      console.log("\n🧠 TraeNuPI Feature Reminder:");
       console.log(`  ${randomFeature}`);
-      console.log("  Run 'nezha --help' for more commands.\n");
+      console.log("  Run 'traenupi --help' for more commands.\n");
 
       psqlExec(`
         INSERT INTO memory (source, content, tags, importance, agent_id)
-        VALUES ('traenupi', 'Reminded about: ${randomFeature.replace(/'/g, "''")}', '{nezha,features,reminder}', 5, '${getAgentId()}');
+        VALUES ('traenupi', 'Reminded about: ${randomFeature.replace(/'/g, "''")}', '{traenupi,features,reminder}', 5, '${getAgentId()}');
       `);
     }
   } catch {}
@@ -126,7 +126,7 @@ export function runDaemon(): void {
     checkReminders();
     checkMeetingNotifications();
     checkBabyAIParticipation();
-    checkNezhaFeatures();
+    checkTraeNuPIFeatures();
 
     presenceUpdateCounter++;
     if (presenceUpdateCounter >= 120) {

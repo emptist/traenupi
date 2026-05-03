@@ -98,7 +98,135 @@ import {
   is_object as jsonIsObject,
 } from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/jsonx.mjs";
 
-import { toList, Ok, Error as GleamError, type Result } from "../../gleam/traenupi_core/build/dev/javascript/gleam_stdlib/gleam.mjs";
+import {
+  new_graph,
+  new_entry,
+  with_tags,
+  add_entry,
+  remove_entry,
+  get_entry,
+  find_by_key,
+  find_by_tag,
+  find_by_category,
+  search,
+  count_entries,
+  get_all_tags,
+  get_all_categories,
+  type KnowledgeGraph$,
+  type KnowledgeEntry$,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/knowledge.mjs";
+
+import {
+  new_reflection,
+  with_task,
+  with_learning,
+  with_issue,
+  with_suggestion,
+  with_praise,
+  with_scores,
+  with_type,
+  with_sentiment,
+  new_store as new_reflection_store,
+  store_reflection,
+  get_reflection,
+  get_all_reflections,
+  get_reflections_by_agent,
+  get_reflections_by_type,
+  count_reflections,
+  reflection_type_to_string,
+  reflection_type_from_string,
+  sentiment_to_string,
+  sentiment_from_string,
+  severity_to_string,
+  severity_from_string,
+  type Reflection$,
+  type ReflectionStore$,
+  type ReflectionType$,
+  type Sentiment$,
+  type Severity$,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/reflection.mjs";
+
+import {
+  new_bus,
+  subscribe,
+  unsubscribe,
+  publish,
+  get_history,
+  get_subscriptions,
+  get_subscription_count,
+  clear,
+  clear_history,
+  event_type_to_string,
+  event_type_from_string,
+  event_to_json,
+  Event as GleamEvent,
+  type EventBus$,
+  type Event$,
+  type EventType$,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/event_bus.mjs";
+
+import {
+  new_context,
+  with_project,
+  with_git_hash,
+  with_source,
+  with_branch,
+  with_session,
+  with_inner,
+  generate_semantic_id,
+  create_identity,
+  new_store as new_identity_store,
+  store_identity,
+  get_identity,
+  list_identities,
+  get_identities_by_project,
+  get_identities_by_source,
+  count_identities,
+  source_to_string,
+  source_from_string,
+  identity_to_json,
+  parse_identity_id,
+  is_session_identity,
+  is_global_identity,
+  is_inner_identity,
+  type AgentContext$,
+  type AgentIdentity$,
+  type IdentityStore$,
+  type AgentSource$,
+} from "../../gleam/traenupi_core/build/dev/javascript/traenupi_core/traenupi_core/identity.mjs";
+
+import { toList, Ok, Error as GleamError, type Result, type List } from "../../gleam/traenupi_core/build/dev/javascript/gleam_stdlib/gleam.mjs";
+import { Some, None, type Option$ } from "../../gleam/traenupi_core/build/dev/javascript/gleam_stdlib/gleam/option.mjs";
+
+export { toList, type List, type Option$, Some, None };
+
+export function listToArray<T>(list: List<T> | T[]): T[] {
+  if (Array.isArray(list)) return list;
+  if (list && typeof list === "object" && "toArray" in list) {
+    return (list as unknown as { toArray: () => T[] }).toArray();
+  }
+  if (list && typeof list === "object" && Symbol.iterator in list) {
+    return Array.from(list as unknown as Iterable<T>);
+  }
+  return [];
+}
+
+export function optionToNullable<T>(option: Option$<T> | T | null | undefined): T | undefined {
+  if (option === null || option === undefined) return undefined;
+  if (typeof option === "object" && option !== null) {
+    const opt = option as unknown as { 0?: T };
+    if ("0" in opt) {
+      return opt[0];
+    }
+    return undefined;
+  }
+  return option as T;
+}
+
+export function nullableToOption<T>(value: T | undefined | null): T | null {
+  if (value === undefined || value === null) return null;
+  return value;
+}
 
 export function demoGleamIntegration(): void {
   console.log("=== Gleam + TypeScript Integration Demo ===\n");
@@ -343,4 +471,89 @@ export {
   jsonIsString,
   jsonIsArray,
   jsonIsObject,
+  new_graph,
+  new_entry,
+  with_tags,
+  add_entry,
+  remove_entry,
+  get_entry,
+  find_by_key,
+  find_by_tag,
+  find_by_category,
+  search,
+  count_entries,
+  get_all_tags,
+  get_all_categories,
+  type KnowledgeGraph$,
+  type KnowledgeEntry$,
+  new_reflection,
+  with_task,
+  with_learning,
+  with_issue,
+  with_suggestion,
+  with_praise,
+  with_scores,
+  with_type,
+  with_sentiment,
+  new_reflection_store,
+  store_reflection,
+  get_reflection,
+  get_all_reflections,
+  get_reflections_by_agent,
+  get_reflections_by_type,
+  count_reflections,
+  reflection_type_to_string,
+  reflection_type_from_string,
+  sentiment_to_string,
+  sentiment_from_string,
+  severity_to_string,
+  severity_from_string,
+  type Reflection$,
+  type ReflectionStore$,
+  type ReflectionType$,
+  type Sentiment$,
+  type Severity$,
+  new_bus,
+  subscribe,
+  unsubscribe,
+  publish,
+  get_history,
+  get_subscriptions,
+  get_subscription_count,
+  clear,
+  clear_history,
+  event_type_to_string,
+  event_type_from_string,
+  event_to_json,
+  GleamEvent,
+  type EventBus$,
+  type Event$,
+  type EventType$,
+  new_context,
+  with_project,
+  with_git_hash,
+  with_source,
+  with_branch,
+  with_session,
+  with_inner,
+  generate_semantic_id,
+  create_identity,
+  new_identity_store,
+  store_identity,
+  get_identity,
+  list_identities,
+  get_identities_by_project,
+  get_identities_by_source,
+  count_identities,
+  source_to_string,
+  source_from_string,
+  identity_to_json,
+  parse_identity_id,
+  is_session_identity,
+  is_global_identity,
+  is_inner_identity,
+  type AgentContext$,
+  type AgentIdentity$,
+  type IdentityStore$,
+  type AgentSource$,
 };

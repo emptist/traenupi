@@ -43,7 +43,7 @@ Trae IDE marks AI sessions as "completed" when it detects task completion signal
 When a new session starts:
 1. **Run \`traenupi start\`** - This single command does everything
 2. Run \`traenupi tellme "What should I work on?"\` for context
-3. Run \`nezha tasks\` for current task list
+3. Run \`traenupi tasks\` for current task list
 4. Run \`xcom stats\` for social media status
 
 ### Reporting Issues
@@ -51,36 +51,25 @@ When a new session starts:
 **IMPORTANT: Do NOT modify other Nezha family projects directly!**
 
 The Nezha family includes:
-- **nezha** - Coordination layer
 - **nupi** - Task management layer  
 - **piano** - Autonomous agent
 - **xcom** - Twitter automation
 
 If you find issues in these projects:
 \`\`\`bash
-# Report issues using nezha areflect
-nezha areflect "[ISSUE] title: Description of the issue severity: high"
-
-# Or create issues directly
-nezha issue-add "Issue title"
-\`\`\`
-
-### Nezha Commands
-
-\`\`\`bash
-nezha tasks                          # List current tasks
-nezha task-add "title" "desc" 5      # Add a new task
-nezha issue-add "title"              # Create an issue
-nezha areflect "[LEARN] insight: ..." # Save a learning
+# Report issues using traenupi reflect
+traenupi reflect add "[ISSUE] Description of the issue"
 \`\`\`
 
 ### TraeNuPI Commands
 
 \`\`\`bash
-traenupi start                       # Initialize session (RUN FIRST!)
-traenupi tellme "question"           # Ask baby AI for guidance
-traenupi summary                     # Show all stats at once
-traenupi know "key" "value"          # Store knowledge
+traenupi tasks                       # List current tasks
+traenupi task-add "title"            # Add a new task
+traenupi reflect add "summary"       # Add a reflection
+traenupi reflect list                # List reflections
+traenupi know cat:key "value"        # Store knowledge
+traenupi identity                    # Show AI identity
 \`\`\`
 `;
   
@@ -186,7 +175,7 @@ The baby AI will tell you:
 ### Step 3: Pick Up Work
 
 Based on baby AI's guidance:
-1. Check \`nezha tasks\` for current work items
+1. Check \`traenupi tasks\` for current work items
 2. Continue improving the project
 3. Add new tasks as you discover them
 `;
@@ -239,10 +228,10 @@ The baby AI has access to:
 cat ~/.traenupi/history.json
 \`\`\`
 
-### Step 4: Check Nezha Tasks
+### Step 4: Check Tasks
 
 \`\`\`bash
-nezha tasks
+traenupi tasks
 \`\`\`
 
 ### Step 5: Resume Work

@@ -67,8 +67,6 @@ export function showPresence(): void {
       let displayName = ai.agentId;
       if (ai.agentId.startsWith("S-TRAE-")) {
         displayName = ai.agentId.replace("S-TRAE-", "");
-      } else if (ai.agentId.startsWith("S-nezha-")) {
-        displayName = ai.agentId.replace("S-nezha-", "nezha/");
       } else if (ai.agentId.startsWith("bot_")) {
         displayName = `bot_${ai.agentId.substring(4, 12)}`;
       } else if (ai.agentId.startsWith("baby-ai-")) {
@@ -167,8 +165,6 @@ export function showCollaboration(): void {
         let displayName = author;
         if (author.startsWith("S-TRAE-")) {
           displayName = author.replace("S-TRAE-", "");
-        } else if (author.startsWith("S-nezha-")) {
-          displayName = author.replace("S-nezha-", "nezha/");
         } else if (author.startsWith("bot_")) {
           displayName = `bot_${author.substring(4, 12)}`;
         } else if (author.startsWith("baby-ai-")) {

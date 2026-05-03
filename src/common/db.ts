@@ -1,6 +1,7 @@
 import { execSync } from "node:child_process";
 import type { DbQueryOptions } from "./types.js";
 import { resolveMeetingId as resolveMeetingIdImpl } from "./resolve-id.js";
+import { resolveAgentIdentity } from "./identity-gleam.js";
 
 export interface DbConfig {
   host?: string;
@@ -69,14 +70,8 @@ export function psqlExec(sql: string, options?: DbQueryOptions): boolean {
 
 export function getAgentId(prefix: string = "S-TRAE"): string {
   try {
-    const result = execSync("nezha agents id", {
-      encoding: "utf-8",
-      timeout: 5000,
-    }).trim();
-    const lines = result.split("\n").filter(
-      l => l.trim() && !l.includes("[INFO]") && !l.includes("[WARN]") && !l.includes("[ERROR]")
-    );
-    return lines[lines.length - 1]?.trim() || `${prefix}-${Date.now().toString(36)}`;
+    const identity = resolveAgentIdentity();
+    return identity.id;
   } catch {
     return `${prefix}-${Date.now().toString(36)}`;
   }

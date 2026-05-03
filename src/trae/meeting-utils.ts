@@ -225,8 +225,6 @@ export function showAllAIs(): void {
       let displayName = author;
       if (author.startsWith("S-TRAE-")) {
         displayName = author.replace("S-TRAE-", "");
-      } else if (author.startsWith("S-nezha-")) {
-        displayName = author.replace("S-nezha-", "nezha/");
       } else if (author.startsWith("bot_")) {
         displayName = `bot_${author.substring(4, 12)}`;
       }

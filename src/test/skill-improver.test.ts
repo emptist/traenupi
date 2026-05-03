@@ -341,8 +341,8 @@ describe("skill-improver", () => {
     it("should parse a well-formed response", () => {
       const response = `[DESCRIPTION]: A skill for reviewing learning documentation
 [INSTRUCTIONS]: Use this skill when you need to review and validate learning entries
-[QUICK_START]: Run 'nezha skill review' to start reviewing
-[EXAMPLES]: nezha skill review --recent`;
+[QUICK_START]: Run 'traenupi skill review' to start reviewing
+[EXAMPLES]: traenupi skill review --recent`;
       const result = parseSkillImprovementResponse(response);
       assert.ok(result.description);
       assert.ok(result.instructions);

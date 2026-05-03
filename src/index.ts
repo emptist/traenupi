@@ -9,7 +9,34 @@ import { createTask, loadTask } from "./task.js";
 import type { DriverConfig } from "./common/types.js";
 import { psqlQuery, psqlExec, getAgentId, resolveMeetingId } from "./common/db.js";
 import { resolveId, resolveTaskId, resolveIssueId, resolveAgentId, resolveOpinionId, resolveSkillId, detectEntityType, validateShortId, type EntityType } from "./common/resolve-id.js";
-import { loadKnowledge, addKnowledge, getKnowledgeByCategory, loadKnowledgeLocal, type KnowledgeEntry } from "./common/knowledge.js";
+import { loadKnowledge, addKnowledge, getKnowledgeByCategory, searchKnowledge, getRecentKnowledge, getKnowledgeStats, loadKnowledgeLocal, type KnowledgeEntry } from "./common/knowledge-gleam.js";
+import { 
+  createReflection, 
+  addLearning, 
+  addIssue, 
+  addSuggestion, 
+  addPraise, 
+  setScores, 
+  setSentiment,
+  getReflectionById,
+  getReflectionsByAgent,
+  getReflectionsByType,
+  getAllReflections,
+  getReflectionCount,
+  loadReflectionsFromDb,
+  type Reflection 
+} from "./common/reflection-gleam.js";
+import {
+  createAgentIdentity,
+  createAgentContext,
+  generateAgentId,
+  getIdentityById,
+  getAllIdentities,
+  getIdentitiesByProject,
+  resolveAgentIdentity,
+  parseAgentId,
+  type AgentIdentity
+} from "./common/identity-gleam.js";
 import { addOpinion, getMeetingOpinions, getMeetingInfo, getActiveMeetings } from "./common/meeting.js";
 import { 
   ensureDir, 
@@ -345,25 +372,8 @@ async function main(): Promise<void> {
     
     if (firstArg === "--recent" || firstArg === "-r") {
       const limit = parseInt(rest[1], 10) || 10;
+      const recent = getRecentKnowledge(limit);
       
-      try {
-        const output = psqlQuery(`SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT ${limit};`);
-        if (output.trim()) {
-          console.log(`[TRAENUPI] Knowledge: [--recent ${limit}]\n`);
-          for (const line of output.trim().split("\n")) {
-            const parts = line.split("|");
-            const content = parts[0] || "";
-            const tags = parts[1] || "";
-            const date = parts[2] ? new Date(parts[2]).toLocaleDateString() : "";
-            const category = tags.replace(/[{}"]/g, "").split(",").filter((t: string) => t !== "traenupi").join(",") || "general";
-            console.log(`  [${category}] ${content} (${date})`);
-          }
-          return;
-        }
-      } catch {}
-      
-      const knowledge = loadKnowledgeLocal();
-      const recent = knowledge.sort((a, b) => b.time - a.time).slice(0, limit);
       if (recent.length === 0) {
         console.log("[TRAENUPI] No knowledge stored yet.");
         return;
@@ -384,31 +394,7 @@ async function main(): Promise<void> {
       
       console.log(`[TRAENUPI] Searching for "${searchTerm}"...\n`);
       
-      try {
-        const output = psqlQuery(`SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' AND content ILIKE '%${searchTerm}%' ORDER BY created_at DESC LIMIT 20;`);
-        
-        if (output.trim()) {
-          const lines = output.trim().split("\n");
-          console.log(`Found ${lines.length} matching entries:\n`);
-          
-          for (const line of lines) {
-            const parts = line.split("|");
-            const content = parts[0] || "";
-            const tags = parts[1] || "";
-            const date = parts[2] ? new Date(parts[2]).toLocaleDateString() : "";
-            const category = tags.replace(/[{}"]/g, "").split(",").filter((t: string) => t !== "traenupi").join(",") || "general";
-            console.log(`  [${category}] ${content} (${date})`);
-          }
-          return;
-        }
-      } catch {}
-      
-      const knowledge = loadKnowledgeLocal();
-      const matches = knowledge.filter(k => 
-        k.key.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        k.value.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        k.category.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const matches = searchKnowledge(searchTerm);
       
       if (matches.length === 0) {
         console.log("No matching knowledge found.");
@@ -440,6 +426,194 @@ async function main(): Promise<void> {
       console.log(`[TRAENUPI] No knowledge found for "${firstArg}".`);
       console.log("Usage: traenupi know <category>:<key> <value>");
     }
+    return;
+  }
+  
+  if (command === "know-stats" || command === "knowledge-stats") {
+    const stats = getKnowledgeStats();
+    console.log("[TRAENUPI] Knowledge Graph Statistics\n");
+    console.log(`  Total entries: ${stats.total}`);
+    console.log(`  Categories: ${stats.categories.length}`);
+    console.log(`  Tags: ${stats.tags.length}`);
+    if (stats.categories.length > 0) {
+      console.log("\n  Categories:");
+      for (const cat of stats.categories) {
+        console.log(`    - ${cat}`);
+      }
+    }
+    return;
+  }
+  
+  if (command === "reflect" || command === "reflection") {
+    const subCommand = args[1];
+    
+    if (!subCommand) {
+      const count = getReflectionCount();
+      console.log(`[TRAENUPI] Reflection System (${count} reflections stored)`);
+      console.log("\nUsage:");
+      console.log("  traenupi reflect add <summary>        - Add a new reflection");
+      console.log("  traenupi reflect list                 - List all reflections");
+      console.log("  traenupi reflect show <id>            - Show a specific reflection");
+      console.log("  traenupi reflect by-agent <agent-id>  - List reflections by agent");
+      return;
+    }
+    
+    if (subCommand === "add") {
+      const summary = args.slice(2).join(" ");
+      if (!summary) {
+        console.log("[ERROR] Usage: traenupi reflect add <summary>");
+        return;
+      }
+      
+      const agentId = getAgentId();
+      const reflection = createReflection(summary, agentId);
+      console.log(`[TRAENUPI] Created reflection: ${reflection.id}`);
+      console.log(`  Summary: ${reflection.summary}`);
+      console.log(`  Agent: ${reflection.agentId}`);
+      return;
+    }
+    
+    if (subCommand === "list") {
+      loadReflectionsFromDb();
+      const reflections = getAllReflections();
+      if (reflections.length === 0) {
+        console.log("[TRAENUPI] No reflections stored yet.");
+        return;
+      }
+      console.log(`[TRAENUPI] Reflections (${reflections.length})\n`);
+      for (const r of reflections.slice(0, 20)) {
+        const date = new Date(r.createdAt).toLocaleDateString();
+        console.log(`  [${date}] ${r.id}: ${r.summary.substring(0, 50)}...`);
+      }
+      return;
+    }
+    
+    if (subCommand === "show") {
+      const id = args[2];
+      if (!id) {
+        console.log("[ERROR] Usage: traenupi reflect show <id>");
+        return;
+      }
+      
+      const reflection = getReflectionById(id);
+      if (!reflection) {
+        console.log(`[ERROR] Reflection not found: ${id}`);
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Reflection: ${reflection.id}\n`);
+      console.log(`  Summary: ${reflection.summary}`);
+      console.log(`  Type: ${reflection.reflectionType}`);
+      console.log(`  Agent: ${reflection.agentId}`);
+      if (reflection.taskId) console.log(`  Task: ${reflection.taskId}`);
+      if (reflection.overallScore) console.log(`  Score: ${reflection.overallScore}`);
+      if (reflection.learnings.length > 0) {
+        console.log("\n  Learnings:");
+        for (const l of reflection.learnings) {
+          console.log(`    - ${l.topic}: ${l.reminder}`);
+        }
+      }
+      if (reflection.issues.length > 0) {
+        console.log("\n  Issues:");
+        for (const i of reflection.issues) {
+          console.log(`    - [${i.severity}] ${i.description}`);
+        }
+      }
+      return;
+    }
+    
+    console.log(`[ERROR] Unknown subcommand: ${subCommand}`);
+    return;
+  }
+  
+  if (command === "identity" || command === "agent-id") {
+    const subCommand = args[1];
+    
+    if (!subCommand) {
+      const identity = resolveAgentIdentity();
+      console.log("[TRAENUPI] AI Identity Service\n");
+      console.log(`  Current Agent ID: ${identity.id}`);
+      console.log(`  Project: ${identity.project || "unknown"}`);
+      console.log(`  Source: ${identity.source || "unknown"}`);
+      if (identity.gitHash) console.log(`  Git Hash: ${identity.gitHash}`);
+      console.log("\nUsage:");
+      console.log("  traenupi identity show              - Show current identity");
+      console.log("  traenupi identity list              - List all identities");
+      console.log("  traenupi identity parse <id>        - Parse an agent ID");
+      console.log("  traenupi identity by-project <name> - List identities by project");
+      return;
+    }
+    
+    if (subCommand === "show") {
+      const identity = resolveAgentIdentity();
+      console.log(`[TRAENUPI] Current Identity\n`);
+      console.log(`  ID: ${identity.id}`);
+      console.log(`  Project: ${identity.project || "unknown"}`);
+      console.log(`  Source: ${identity.source || "unknown"}`);
+      if (identity.gitHash) console.log(`  Git Hash: ${identity.gitHash}`);
+      if (identity.machineFingerprint) console.log(`  Machine: ${identity.machineFingerprint}`);
+      if (identity.displayName) console.log(`  Name: ${identity.displayName}`);
+      console.log(`  Created: ${new Date(identity.createdAt).toLocaleString()}`);
+      return;
+    }
+    
+    if (subCommand === "list") {
+      const identities = getAllIdentities();
+      if (identities.length === 0) {
+        console.log("[TRAENUPI] No identities stored yet.");
+        return;
+      }
+      console.log(`[TRAENUPI] Identities (${identities.length})\n`);
+      for (const id of identities.slice(0, 20)) {
+        const date = new Date(id.createdAt).toLocaleDateString();
+        console.log(`  [${date}] ${id.id}`);
+        if (id.project) console.log(`           Project: ${id.project}`);
+      }
+      return;
+    }
+    
+    if (subCommand === "parse") {
+      const id = args[2];
+      if (!id) {
+        console.log("[ERROR] Usage: traenupi identity parse <id>");
+        return;
+      }
+      
+      const parsed = parseAgentId(id);
+      if (!parsed) {
+        console.log(`[ERROR] Invalid agent ID format: ${id}`);
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Parsed Agent ID\n`);
+      console.log(`  Source: ${parsed.source}`);
+      console.log(`  Project: ${parsed.project}`);
+      if (parsed.session) console.log(`  Session: ${parsed.session}`);
+      return;
+    }
+    
+    if (subCommand === "by-project") {
+      const project = args[2];
+      if (!project) {
+        console.log("[ERROR] Usage: traenupi identity by-project <name>");
+        return;
+      }
+      
+      const identities = getIdentitiesByProject(project);
+      if (identities.length === 0) {
+        console.log(`[TRAENUPI] No identities found for project: ${project}`);
+        return;
+      }
+      
+      console.log(`[TRAENUPI] Identities for project "${project}" (${identities.length})\n`);
+      for (const id of identities) {
+        const date = new Date(id.createdAt).toLocaleDateString();
+        console.log(`  [${date}] ${id.id}`);
+      }
+      return;
+    }
+    
+    console.log(`[ERROR] Unknown subcommand: ${subCommand}`);
     return;
   }
   
@@ -598,32 +772,32 @@ EXAMPLES:
 
 Welcome! You're now working with TraeNuPI, your AI companion.
 
-### Essential Commands to Know:
+### Essential Commands:
 
-**Nezha Coordination Layer:**
-- \`nezha tasks\` - List pending tasks
-- \`nezha task-add "title"\` - Create a new task
-- \`nezha areflect "[ISSUE] title: ... severity: low|medium|high"\` - Report issues
-- \`nezha areflect "[LEARN] insight: ... context: ..."\` - Save learnings
-- \`nezha areflect "[TASK] title: ... priority: 1-10"\` - Create tasks
+**TraeNuPI Built-in Commands:**
+- \`traenupi tasks\` - List pending tasks
+- \`traenupi task-add "title"\` - Create a new task
+- \`traenupi reflect add "summary"\` - Add a reflection
+- \`traenupi reflect list\` - List reflections
+- \`traenupi know <category>:<key> <value>\` - Store knowledge
+- \`traenupi know search <term>\` - Search knowledge
+- \`traenupi identity\` - Show AI identity info
 
-**TraeNuPI Commands:**
+**Session Management:**
 - \`traenupi start\` - Initialize session (run this first!)
 - \`traenupi tellme "question"\` - Ask baby AI for guidance
-- \`traenupi know <category>:<key> <value>\` - Store knowledge
 - \`traenupi meeting watch\` - Watch for meeting activity
 - \`traenupi summary\` - Quick status overview
 
 ### ⚠️ CRITICAL: Do NOT Modify Other Nezha Family Projects
 
 **NEVER directly modify code in:**
-- \`nezha\` - Coordination layer
 - \`nupi\` - Task management layer
 - \`piano\` - Autonomous agent
 - \`xcom\` - Twitter automation
 
 **Instead, report issues with feature proposals:**
-- Use \`nezha areflect "[ISSUE] title: ... severity: ..."\`
+- Use \`traenupi reflect add "[ISSUE] title: ..."\`
 - Let the developer AI in those projects decide how to implement
 
 ### Session Survival Tips:
@@ -642,12 +816,12 @@ Welcome! You're now working with TraeNuPI, your AI companion.
 
 2. **Report the issue:**
    \`\`\`bash
-   nezha areflect "[ISSUE] title: <brief description> severity: low|medium|high"
+   traenupi reflect add "[ISSUE] <brief description>"
    \`\`\`
 
 3. **Save what you learned:**
    \`\`\`bash
-   nezha areflect "[LEARN] insight: <what you learned> context: <situation>"
+   traenupi reflect add "[LEARN] <what you learned>"
    \`\`\`
 
 4. **Ask for help:**
@@ -688,7 +862,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
 
 4. **Check your tasks:**
    \`\`\`bash
-   nezha tasks
+   traenupi tasks
    \`\`\`
 
 5. **Stay engaged with baby AI:**
@@ -724,11 +898,11 @@ Welcome! You're now working with TraeNuPI, your AI companion.
 
 4. **Quality control:**
    - Commit messages must contain [task:], [issue:], or [inter-review:]
-   - Get a task ID with: \`psql -h localhost -U postgres -d nezha -c "SELECT id, title FROM tasks ORDER BY created_at DESC LIMIT 5;"\`
+   - Get a task ID with: \`traenupi tasks\`
 
 ### After Committing:
 - The post-commit hook will automatically mark tasks complete
-- Check with \`nezha tasks\` to see updated status
+- Check with \`traenupi tasks\` to see updated status
 `;
 
     if (hookType === "startup") {
@@ -1427,14 +1601,9 @@ EXAMPLES:
     const knowledge = loadKnowledge();
     console.log("[KNOWLEDGE] " + knowledge.length + " entries loaded");
     
-    console.log("\n[3/5] Checking Nezha tasks...");
-    try {
-      const tasks = execSync("nezha tasks", { encoding: "utf-8", timeout: 5000 });
-      const taskCount = (tasks.match(/│/g) || []).length;
-      console.log("[NEZHA] " + taskCount + " tasks found");
-    } catch {
-      console.log("[NEZHA] Not available");
-    }
+    console.log("\n[3/5] Checking tasks...");
+    const taskCount = getKnowledgeByCategory("task").length;
+    console.log("[TASKS] " + taskCount + " task entries found");
     
     console.log("\n[4/5] Checking pending inter-reviews...");
     try {

@@ -1,0 +1,29 @@
+name = "node_pg"
+version = "1.0.0"
+target = "javascript"
+
+description = "Type-safe PostgreSQL client library for Gleam, wrapping the battle-tested node-postgres library"
+licences = ["MIT"]
+repository = { type = "github", user = "Comamoca", repo = "node-pg" }
+links = [
+  { title = "GitHub", href = "https://github.com/Comamoca/node-pg" },
+  { title = "Sponsor", href = "https://github.com/sponsors/Comamoca" }
+]
+
+# For a full reference of all the available options, you can have a look at
+# https://gleam.run/writing-gleam/gleam-toml/.
+
+[dependencies]
+gleam_stdlib = ">= 0.44.0 and < 2.0.0"
+gleam_javascript = ">= 1.0.0 and < 2.0.0"
+
+[dev-dependencies]
+gleeunit = ">= 1.0.0 and < 2.0.0"
+
+[javascript]
+runtime = "node"
+
+[javascript.deno]
+allow_read = true
+allow_env = true
+allow_net = ["localhost:5432"]

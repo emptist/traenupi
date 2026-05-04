@@ -32,72 +32,54 @@ The goal is to implement a stateful, tool-executing agent with event streaming c
 
 ## Research Findings
 
-### 0. Glimr Framework Discovery 🎉
+### 0. node_pg Integration Complete ✅
 
 **Date**: 2026-05-04  
-**Status**: Recommended for TraeNuPI  
-**Website**: [glimr.build](https://glimr.build)  
-**GitHub**: [glimr-org/glimr](https://github.com/glimr-org/glimr)
+**Status**: Implemented  
+**Approach**: Minimal FFI with node_pg + custom HTTP server
 
-Glimr is a batteries-included web framework for Gleam that provides everything needed for modern web development with functional programming elegance.
+#### Implementation Summary
 
-#### Key Features for TraeNuPI
+Successfully integrated `node_pg` for PostgreSQL connectivity with minimal FFI dependency:
 
-1. **PostgreSQL Native Support** ✅
-   - Connection pooling
-   - Transaction support
-   - SQL queries with full LSP support
-   - Automatic migration generation
-   - Perfect integration with our existing `node_pg` setup
+1. **Database Connectivity** ✅
+   - Native Gleam PostgreSQL client (node_pg)
+   - Type-safe query execution
+   - Promise-based async operations
+   - Connection to `nezha` database
 
-2. **Session Management** ✅
-   - PostgreSQL driver (matches our nezha DB)
-   - Flash messages
-   - Session invalidation & regeneration
-   - Cookie-based sessions
+2. **HTTP Server** ✅
+   - Minimal FFI using Node.js built-in `http` module
+   - Health check endpoint (`/health`)
+   - Status endpoint (`/status`)
+   - API endpoints (`/api/tasks`)
+   - JSON responses
 
-3. **Authentication System** ✅
-   - Generated auth scaffolding
-   - Multiple auth models
-   - Auth & guest middleware
-   - Scoped authentication
+3. **Architecture Benefits**
+   ```
+   Before (High FFI Dependency):
+   ├─ Database: FFI to Node.js pg ❌
+   ├─ HTTP: Not implemented ❌
+   └─ Tools: FFI to Node.js ❌
+   
+   After (Minimal FFI):
+   ├─ Database: node_pg (Gleam native) ✅
+   ├─ HTTP: Minimal FFI (Node.js http module) ✅
+   └─ Tools: Only when necessary ✅
+   ```
 
-4. **Console Commands** ✅
-   - CLI task runner with database access
-   - Perfect for TraeNuPI daemon operations
-   - Argument parsing support
+#### Why Not Glimr
 
-5. **Type-Safe Everything** ✅
-   - Compile-time type safety
-   - Pattern matching routes
-   - Gleam native implementation
-   - Minimal FFI dependency
+Glimr is designed for Erlang target, not JavaScript. Since TraeNuPI uses JavaScript target (Node.js runtime), we created a minimal HTTP server with just 3 FFI functions:
+- `createServer(handler)` - Create HTTP server
+- `listen(server, port, callback)` - Start listening
+- `writeResponse(res, status, headers, body)` - Send response
 
-#### Architecture Benefits
-
-```
-Traditional Approach (High FFI Dependency):
-├─ HTTP: FFI to Node.js fetch ❌
-├─ Database: node_pg (Gleam) ✅
-└─ Tools: FFI to Node.js ❌
-
-Glimr-Based Approach (Minimal FFI):
-├─ HTTP: Glimr (Gleam native) ✅
-├─ Database: node_pg + Glimr pooling ✅
-├─ Session: Glimr (Gleam) ✅
-├─ Auth: Glimr (Gleam) ✅
-├─ CLI: Glimr console commands ✅
-└─ Tools: Only when necessary ✅
-```
-
-#### Why Glimr Over Other Frameworks
-
-| Feature | Glimr | Wisp | Lustre |
-|---------|-------|------|--------|
-| PostgreSQL Support | ✅ Native | ✅ Via middleware | ❌ Frontend focused |
-| Session Management | ✅ Built-in | ❌ Manual | ❌ Not applicable |
-| Authentication | ✅ Generated | ❌ Manual | ❌ Not applicable |
-| Console Commands | ✅ Built-in | ❌ Not included | ❌ Not applicable |
+This approach provides:
+- ✅ Minimal FFI (only 3 functions)
+- ✅ Full control over request handling
+- ✅ Native Gleam request/response types
+- ✅ Integration with node_pg for database operations
 | Type Safety | ✅ Full Gleam | ✅ Full Gleam | ✅ Full Gleam |
 | Learning Curve | Medium | Low | Medium |
 | Best For | Full-stack apps | APIs, simple web | SPAs, LiveView |

@@ -1,0 +1,16 @@
+# Database Config
+#
+# Database configuration for TraeNuPI. Using PostgreSQL
+# with the nezha database.
+
+[connections.main]
+  # PostgreSQL driver for TraeNuPI
+  driver = "postgres"
+
+  # Connection details
+  host = "${DB_HOST}"
+  port = "${DB_PORT}"
+  database = "${DB_NAME}"
+  username = "${DB_USER}"
+  password = "${DB_PASSWORD}"
+  pool_size = "${DB_POOL_SIZE}"

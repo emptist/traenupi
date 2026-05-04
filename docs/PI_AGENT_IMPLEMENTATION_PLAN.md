@@ -32,6 +32,78 @@ The goal is to implement a stateful, tool-executing agent with event streaming c
 
 ## Research Findings
 
+### 0. Glimr Framework Discovery 🎉
+
+**Date**: 2026-05-04  
+**Status**: Recommended for TraeNuPI  
+**Website**: [glimr.build](https://glimr.build)  
+**GitHub**: [glimr-org/glimr](https://github.com/glimr-org/glimr)
+
+Glimr is a batteries-included web framework for Gleam that provides everything needed for modern web development with functional programming elegance.
+
+#### Key Features for TraeNuPI
+
+1. **PostgreSQL Native Support** ✅
+   - Connection pooling
+   - Transaction support
+   - SQL queries with full LSP support
+   - Automatic migration generation
+   - Perfect integration with our existing `node_pg` setup
+
+2. **Session Management** ✅
+   - PostgreSQL driver (matches our nezha DB)
+   - Flash messages
+   - Session invalidation & regeneration
+   - Cookie-based sessions
+
+3. **Authentication System** ✅
+   - Generated auth scaffolding
+   - Multiple auth models
+   - Auth & guest middleware
+   - Scoped authentication
+
+4. **Console Commands** ✅
+   - CLI task runner with database access
+   - Perfect for TraeNuPI daemon operations
+   - Argument parsing support
+
+5. **Type-Safe Everything** ✅
+   - Compile-time type safety
+   - Pattern matching routes
+   - Gleam native implementation
+   - Minimal FFI dependency
+
+#### Architecture Benefits
+
+```
+Traditional Approach (High FFI Dependency):
+├─ HTTP: FFI to Node.js fetch ❌
+├─ Database: node_pg (Gleam) ✅
+└─ Tools: FFI to Node.js ❌
+
+Glimr-Based Approach (Minimal FFI):
+├─ HTTP: Glimr (Gleam native) ✅
+├─ Database: node_pg + Glimr pooling ✅
+├─ Session: Glimr (Gleam) ✅
+├─ Auth: Glimr (Gleam) ✅
+├─ CLI: Glimr console commands ✅
+└─ Tools: Only when necessary ✅
+```
+
+#### Why Glimr Over Other Frameworks
+
+| Feature | Glimr | Wisp | Lustre |
+|---------|-------|------|--------|
+| PostgreSQL Support | ✅ Native | ✅ Via middleware | ❌ Frontend focused |
+| Session Management | ✅ Built-in | ❌ Manual | ❌ Not applicable |
+| Authentication | ✅ Generated | ❌ Manual | ❌ Not applicable |
+| Console Commands | ✅ Built-in | ❌ Not included | ❌ Not applicable |
+| Type Safety | ✅ Full Gleam | ✅ Full Gleam | ✅ Full Gleam |
+| Learning Curve | Medium | Low | Medium |
+| Best For | Full-stack apps | APIs, simple web | SPAs, LiveView |
+
+**Decision**: Use Glimr as the foundation for TraeNuPI's HTTP layer, session management, and CLI commands.
+
 ### 1. pi-mono Architecture Overview
 
 The pi-mono project implements a sophisticated three-layer architecture:
@@ -325,6 +397,136 @@ interface BashOperations {
 ---
 
 ## Implementation Plan
+
+### Phase 0: Glimr Integration (Week 0 - Prerequisite) 🎯
+
+**Goal**: Set up Glimr framework as the foundation for TraeNuPI's HTTP layer, session management, and CLI commands.
+
+**Why First**: Glimr provides the infrastructure that all subsequent phases will build upon, reducing FFI dependencies and providing native Gleam solutions.
+
+#### 0.1 Glimr Installation & Configuration
+
+**Tasks**:
+- [ ] Clone Glimr template to TraeNuPI project
+- [ ] Configure `.env` file with TraeNuPI settings
+- [ ] Set up `APP_NAME=TraeNuPI`, `APP_PORT` (e.g., 3000)
+- [ ] Configure `APP_KEY` for session encryption
+- [ ] Install dependencies: `gleam deps download`
+
+**Files to create/modify**:
+- `.env` - Environment configuration
+- `gleam.toml` - Add Glimr dependencies
+- `config/` - Glimr configuration files
+
+#### 0.2 PostgreSQL Database Setup
+
+**Tasks**:
+- [ ] Configure Glimr to use `nezha` database
+- [ ] Set up connection pooling for PostgreSQL
+- [ ] Configure database connection in `config/database.toml`
+- [ ] Test connection with existing `node_pg` setup
+- [ ] Verify Glimr's connection pooling works with our schema
+
+**Configuration**:
+```toml
+# config/database.toml
+[main]
+adapter = "postgresql"
+host = "localhost"
+port = 5432
+database = "nezha"
+pool_size = 10
+```
+
+#### 0.3 Session Management Setup
+
+**Tasks**:
+- [ ] Configure PostgreSQL session driver
+- [ ] Create sessions table migration
+- [ ] Set up session middleware
+- [ ] Test session creation and retrieval
+- [ ] Configure session lifetime and cleanup
+
+**Migration**:
+```sql
+-- Create sessions table for Glimr
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### 0.4 Console Commands Setup
+
+**Tasks**:
+- [ ] Create custom console command structure
+- [ ] Implement `traenupi start` command
+- [ ] Implement `traenupi status` command
+- [ ] Implement `traenupi tellme` command
+- [ ] Test commands with database access
+
+**Example Command**:
+```gleam
+// src/app/console/commands/start_command.gleam
+import glimr/console/command.{type Command}
+import glimr/database/query
+
+pub fn start_command() -> Command {
+  command.new("start")
+  |> command.description("Start TraeNuPI daemon")
+  |> command.handle(fn(_args, _ctx) {
+    // Start daemon logic
+    Ok("TraeNuPI daemon started")
+  })
+}
+```
+
+#### 0.5 Basic HTTP Routes
+
+**Tasks**:
+- [ ] Create health check endpoint
+- [ ] Create API status endpoint
+- [ ] Set up middleware stack (logging, CSRF, etc.)
+- [ ] Test basic routing
+- [ ] Configure CORS for API access
+
+**Example Routes**:
+```gleam
+// src/app/http/controllers/health_controller.gleam
+import glimr/http/response.{type Response}
+
+/// @get "/health"
+pub fn check() -> Response {
+  response.json(200, #("status", "ok"))
+}
+
+/// @get "/api/status"
+pub fn status() -> Response {
+  response.json(200, #("daemon", "running"))
+}
+```
+
+#### 0.6 Integration Testing
+
+**Tasks**:
+- [ ] Test Glimr HTTP server startup
+- [ ] Test PostgreSQL connection pooling
+- [ ] Test session management
+- [ ] Test console commands
+- [ ] Verify all components work together
+
+**Success Criteria**:
+- ✅ Glimr server runs on configured port
+- ✅ PostgreSQL connection pooling works
+- ✅ Sessions can be created and retrieved
+- ✅ Console commands execute successfully
+- ✅ Basic HTTP routes respond correctly
+
+**Estimated Time**: 2-3 days
+
+---
 
 ### Phase 1: Foundation (Week 1-2)
 
@@ -815,6 +1017,45 @@ pub fn load_session(
 
 ## Technical Decisions
 
+### 0. Why Glimr Framework? 🎯
+
+**Context**: TraeNuPI needs HTTP server, session management, CLI commands, and database integration.
+
+**Options Evaluated**:
+
+| Framework | Pros | Cons | Verdict |
+|-----------|------|------|---------|
+| **Wisp** (Official) | ✅ Official support<br>✅ Lightweight<br>✅ Good documentation | ❌ No session management<br>❌ No authentication<br>❌ No console commands<br>❌ Manual PostgreSQL setup | Too basic |
+| **Glimr** | ✅ PostgreSQL native<br>✅ Session management<br>✅ Authentication<br>✅ Console commands<br>✅ Template engine<br>✅ Minimal FFI | ❌ Newer project<br>❌ Medium learning curve | **✅ CHOSEN** |
+| **Lustre** | ✅ Frontend + Backend<br>✅ LiveView style<br>✅ Real-time support | ❌ Frontend focused<br>❌ No session/auth built-in<br>❌ Different use case | Not suitable |
+
+**Decision**: **Use Glimr** as the foundation for TraeNuPI
+
+**Rationale**:
+1. **PostgreSQL Native Support**: Direct integration with our `nezha` database
+2. **Session Management**: Built-in support for daemon sessions
+3. **Console Commands**: Perfect for TraeNuPI CLI tools
+4. **Minimal FFI**: Reduces dependency on Node.js interop
+5. **Type Safety**: Full Gleam native implementation
+6. **Batteries Included**: Authentication, caching, migrations all built-in
+
+**Impact on Architecture**:
+```
+Before Glimr:
+├─ HTTP Server: FFI to Node.js ❌
+├─ Session: Manual implementation ❌
+├─ CLI: FFI to Node.js ❌
+├─ Database: node_pg ✅
+└─ Auth: Not implemented ❌
+
+After Glimr:
+├─ HTTP Server: Glimr (Gleam) ✅
+├─ Session: Glimr (PostgreSQL) ✅
+├─ CLI: Glimr console commands ✅
+├─ Database: Glimr + node_pg ✅
+└─ Auth: Glimr authentication ✅
+```
+
 ### 1. Why Gleam Instead of TypeScript?
 
 **Pros**:
@@ -934,6 +1175,14 @@ pub fn load_session(
 
 ## Timeline
 
+### Week 0: Glimr Integration (Prerequisite) 🎯
+- [ ] Install and configure Glimr framework
+- [ ] Set up PostgreSQL connection pooling
+- [ ] Configure session management
+- [ ] Implement basic console commands
+- [ ] Create health check and status endpoints
+- [ ] Integration testing
+
 ### Week 1-2: Foundation
 - [ ] Core type definitions
 - [ ] Event system
@@ -960,9 +1209,9 @@ pub fn load_session(
 - [ ] Tool tests
 
 ### Week 9-10: Integration
-- [ ] CLI integration
-- [ ] Database integration (nezha DB)
-- [ ] Session management
+- [ ] CLI integration (via Glimr console commands)
+- [ ] Database integration (nezha DB via Glimr)
+- [ ] Session management (via Glimr)
 - [ ] End-to-end tests
 - [ ] Documentation
 
@@ -976,6 +1225,14 @@ pub fn load_session(
 ---
 
 ## Success Criteria
+
+### Phase 0 Success (Glimr Integration)
+- ✅ Glimr server runs on configured port
+- ✅ PostgreSQL connection pooling works
+- ✅ Sessions can be created and retrieved
+- ✅ Console commands execute successfully
+- ✅ Basic HTTP routes respond correctly
+- ✅ Minimal FFI dependencies
 
 ### Phase 1 Success
 - ✅ All core types defined and tested
@@ -1031,7 +1288,20 @@ pub fn load_session(
 
 ## Changelog
 
-### 2026-05-04
+### 2026-05-04 (Glimr Integration Update)
+- **Major Addition**: Integrated Glimr framework as foundation
+- **New Phase 0**: Glimr Integration (prerequisite for all other phases)
+- **Architecture Change**: Minimal FFI approach using Glimr native features
+- **Updated Timeline**: Added Week 0 for Glimr setup
+- **Updated Technical Decisions**: Added Glimr framework comparison and rationale
+- **Benefits**:
+  - PostgreSQL native support with connection pooling
+  - Built-in session management
+  - Console commands for CLI tools
+  - Authentication system
+  - Minimal FFI dependencies
+
+### 2026-05-04 (Initial)
 - Adapted from psypi implementation plan
 - Updated database references (psypi → nezha)
 - Added TraeNuPI-specific tools (tellme, search, knowledge, nezha integration)

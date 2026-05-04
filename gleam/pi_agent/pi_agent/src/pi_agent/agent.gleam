@@ -1,18 +1,20 @@
 import gleam/option.{type Option, None, Some}
 import gleam/list
+import gleam/javascript/promise.{type Promise}
 import pi_agent/types.{
   type AgentMessage, type AgentState, type Model, type Tool,
-  type ThinkingLevel, type LlmMessage,
+  type ThinkingLevel, type LlmMessage, type AgentEvent,
   AgentState as AgentStateConstructor, User, Assistant, ToolResult,
   TextContent, UserMessage, AssistantMessage as AsstMessage,
-  ToolResultMessage,
+  ToolResultMessage, AgentStart, AgentEnd, TurnStart, TurnEnd,
+  StopReasonEnd,
 }
 import pi_agent/event
 import pi_agent/openrouter.{
   type ChatMessage, OpenRouterConfig, ChatCompletionRequest,
   ChatCompletionResponse, SystemMessage, UserMessage as ORUserMessage,
-  AssistantMessage as ORAssistantMessage,
-  default_config, create_request,
+  AssistantMessage as ORAssistantMessage, ToolMessage,
+  default_config, create_request, send_chat_completion,
 }
 import pi_agent/tool
 
@@ -64,6 +66,58 @@ pub fn get_last_message(agent: Agent) -> Option(AgentMessage) {
     [first, ..] -> Some(first)
     [] -> None
   }
+}
+
+pub fn run(agent: Agent, api_key: String) -> Promise(Result(Agent, String)) {
+  let _ = event.emit(agent.emitter, AgentStart)
+  
+  let config = default_config(api_key)
+  let chat_messages = convert_to_chat_messages(agent.state.messages)
+  let all_messages = [SystemMessage(agent.state.system_prompt), ..chat_messages]
+  let request = create_request(config, all_messages)
+  
+  promise.map(send_chat_completion(config, request), fn(result) {
+    case result {
+      Ok(response) -> {
+        let _ = event.emit(agent.emitter, TurnStart)
+        
+        case response.choices {
+          [choice, ..] -> {
+            let assistant_msg = case choice.message {
+              ORAssistantMessage(text) -> {
+                let timestamp = 0
+                Assistant(AsstMessage([TextContent(text)], StopReasonEnd, timestamp))
+              }
+              _ -> {
+                Assistant(AsstMessage([TextContent("Unsupported message type")], StopReasonEnd, 0))
+              }
+            }
+            
+            let new_messages = list.append(agent.state.messages, [assistant_msg])
+            let new_state = AgentStateConstructor(..agent.state, messages: new_messages)
+            let new_agent = Agent(state: new_state, emitter: agent.emitter)
+            
+            let _ = event.emit(agent.emitter, TurnEnd(AsstMessage([TextContent("")], StopReasonEnd, 0), []))
+            let _ = event.emit(agent.emitter, AgentEnd([assistant_msg]))
+            
+            Ok(new_agent)
+          }
+          [] -> {
+            let _ = event.emit(agent.emitter, AgentEnd([]))
+            Error("No response from LLM")
+          }
+        }
+      }
+      Error(openrouter_error) -> {
+        let _ = event.emit(agent.emitter, AgentEnd([]))
+        Error("LLM request failed")
+      }
+    }
+  })
+}
+
+pub fn run_sync(agent: Agent, api_key: String) -> Result(Agent, String) {
+  panic as "Synchronous run not supported in JavaScript. Use run() instead."
 }
 
 fn convert_to_chat_messages(

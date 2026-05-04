@@ -1,5 +1,5 @@
 // FFI for HTTP server using Node.js built-in http module
-// This provides minimal FFI for HTTP functionality
+// Uses Node.js subpath imports for cleaner Gleam imports
 
 import http from "http";
 

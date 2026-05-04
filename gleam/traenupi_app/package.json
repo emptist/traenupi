@@ -1,6 +1,13 @@
 {
   "private": true,
   "type": "module",
+  "imports": {
+    "#gleam/prelude": "./build/dev/javascript/gleam_stdlib/gleam.mjs",
+    "#gleam/option": "./build/dev/javascript/gleam_stdlib/gleam/option.mjs",
+    "#gleam/result": "./build/dev/javascript/gleam_stdlib/gleam/result.mjs",
+    "#gleam/promise": "./build/dev/javascript/gleam_javascript/gleam/javascript/promise.mjs",
+    "#traenupi/http": "./build/dev/javascript/traenupi_app/traenupi/http.mjs"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build"

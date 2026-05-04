@@ -3,6 +3,49 @@ import { existsSync, mkdirSync } from "node:fs";
 import type { ConversationItem } from "../common/types.js";
 import { loadHistory, saveHistory, ensureDir } from "../common/storage.js";
 import { buildContext, buildQuickContext, PI_SESSION_DIR, PI_FLAGS } from "./context.js";
+import { PiAgent, createPiAgentSession, type PiAgentConfig, type PiAgentMessage } from "./pi-agent-bridge.js";
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
+const PI_AGENT_SYSTEM_PROMPT = process.env.PI_AGENT_SYSTEM_PROMPT || "You are a helpful AI assistant integrated with TraeNuPI.";
+
+let piAgentInstance: PiAgent | null = null;
+
+function getPiAgent(): PiAgent {
+  if (!piAgentInstance) {
+    if (!OPENROUTER_API_KEY) {
+      throw new Error("OPENROUTER_API_KEY environment variable is required for PI Agent");
+    }
+    piAgentInstance = createPiAgentSession({
+      apiKey: OPENROUTER_API_KEY,
+      model: "tencent/hy3-preview:free",
+      systemPrompt: PI_AGENT_SYSTEM_PROMPT,
+    });
+  }
+  return piAgentInstance;
+}
+
+export async function askPiAsync(
+  question: string,
+  history: ConversationItem[],
+  quick: boolean = false,
+  onChunk?: (chunk: string) => void
+): Promise<string> {
+  try {
+    const agent = getPiAgent();
+    const context = quick ? buildQuickContext(history, question) : buildContext(history, question);
+    
+    const messages: PiAgentMessage[] = [
+      { role: "system", content: context },
+      { role: "user", content: question },
+    ];
+
+    const response = await agent.run(messages, onChunk);
+    return response.content || "[Pi returned empty response]";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return `[Error calling Pi Agent: ${msg}]`;
+  }
+}
 
 export function askPi(question: string, history: ConversationItem[], quick: boolean = false, useSession: boolean = false): string {
   try {
@@ -104,6 +147,53 @@ export function tellmeSync(question: string, quick: boolean = false, useSession:
   saveHistory(history);
 }
 
+export async function tellmeAsync(question: string, quick: boolean = false): Promise<void> {
+  ensureDir();
+  const history = loadHistory();
+
+  const mode = quick ? "(quick mode)" : "(full context with real PI Agent)";
+  console.log(`[TRAENUPI] Asking ${mode}: "${question}"`);
+  console.log("─".repeat(50));
+
+  let answer = "";
+  let retries = 0;
+  const maxRetries = 3;
+  const baseDelayMs = 2000;
+
+  while (retries <= maxRetries) {
+    try {
+      answer = await askPiAsync(question, history, quick);
+
+      if (!answer.startsWith("[Error") && !answer.startsWith("[Pi Agent error")) {
+        break;
+      }
+
+      retries++;
+      if (retries <= maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, retries - 1);
+        console.log(`[RETRY ${retries}/${maxRetries}] Waiting ${delay / 1000}s before retry...`);
+        await sleepAsync(delay);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      answer = `[Error: ${msg}]`;
+      retries++;
+      if (retries <= maxRetries) {
+        const delay = baseDelayMs * Math.pow(2, retries - 1);
+        console.log(`[RETRY ${retries}/${maxRetries}] Waiting ${delay / 1000}s before retry...`);
+        await sleepAsync(delay);
+      }
+    }
+  }
+
+  console.log("\n[TRAENUPI ANSWER]:");
+  console.log(answer);
+  console.log("\n" + "─".repeat(50));
+
+  history.push({ question, answer, time: Date.now() });
+  saveHistory(history);
+}
+
 export function tellmeDaemon(question: string): void {
   ensureDir();
   const history = loadHistory();
@@ -115,4 +205,8 @@ export function tellmeDaemon(question: string): void {
 function sleep(ms: number): void {
   const end = Date.now() + ms;
   while (Date.now() < end) {}
+}
+
+function sleepAsync(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }

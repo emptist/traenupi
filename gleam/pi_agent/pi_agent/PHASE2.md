@@ -50,6 +50,96 @@ pub fn create_tool_result(content: List(ContentBlock), is_error: Bool) -> ToolEx
 **Purpose**: Core agent implementation with state management and LLM integration.
 
 **Features**:
+- Immutable agent state management
+- Message conversion and tracking
+- OpenRouter LLM integration
+- Event-driven lifecycle
+
+**API**:
+```gleam
+pub fn new(system_prompt: String, model: Model, thinking_level: ThinkingLevel) -> Agent
+pub fn add_message(agent: Agent, message: AgentMessage) -> Agent
+pub fn on_event(agent: Agent, handler: EventHandler) -> Agent
+pub fn run(agent: Agent, api_key: String) -> Promise(Result(Agent, String))
+```
+
+**Usage Example**:
+```gleam
+let agent = new("You are helpful", Model("gpt-4"), Medium)
+let agent = on_event(agent, fn(event) {
+  case event {
+    AgentStart -> io.println("🤖 Agent started")
+    TurnStart -> io.println("⏳ Processing turn")
+    Error(msg) -> io.println("❌ Error: " <> msg)
+    _ -> Nil
+  }
+})
+
+let result = run(agent, api_key)
+```
+
+### 4. Tool Executor (`pi_agent/tool_executor.gleam`)
+
+**Purpose**: Execute tool calls from LLM responses.
+
+**Features**:
+- Tool registry management
+- Tool execution with error handling
+- Support for sequential and parallel execution
+
+**API**:
+```gleam
+pub fn new_registry() -> ToolRegistry
+pub fn register_tool(registry: ToolRegistry, name: String, handler: ToolHandler) -> ToolRegistry
+pub fn execute_tool(registry: ToolRegistry, tool_call: ContentBlock) -> ToolExecutionResult
+```
+
+**Usage Example**:
+```gleam
+let registry = new_registry()
+let registry = register_tool(registry, "get_weather", fn(args) {
+  let weather = fetch_weather(args)
+  ToolResult(
+    content: [TextContent(weather)],
+    is_error: False,
+    details: None,
+  )
+})
+
+let result = execute_tool(registry, ToolCall("id", "get_weather", "{\"city\": \"Tokyo\"}"))
+```
+
+### 5. Streaming Module (`pi_agent/streaming.gleam`)
+
+**Purpose**: Real-time streaming support for LLM responses.
+
+**Features**:
+- Callback-based streaming
+- Cancellation support
+- Memory-efficient chunk processing
+
+**API**:
+```gleam
+pub fn create_streaming_request(url: String, headers: List(#(String, String)), body: String, on_chunk: StreamCallback) -> Promise(Result(StreamHandle, String))
+pub fn cancel_stream(handle: StreamHandle) -> Nil
+```
+
+**Usage Example**:
+```gleam
+let _ = create_streaming_request(
+  "https://api.openrouter.ai/v1/chat/completions",
+  [#("Authorization", "Bearer " <> api_key)],
+  json_body,
+  fn(chunk, is_done) {
+    case is_done {
+      True -> io.println("✅ Stream complete")
+      False -> io.print(chunk)
+    }
+  },
+)
+```
+
+**Features**:
 - Agent type and state management
 - Agent creation and configuration
 - Message addition and retrieval
@@ -175,6 +265,184 @@ The agent integrates with OpenRouter API for LLM access:
 2. **Request Creation**: Converts agent messages to OpenRouter format
 3. **Response Handling**: Parses OpenRouter responses and extracts content
 4. **Streaming Support**: Handles SSE streaming responses
+
+## Best Practices
+
+### 1. Event Handling
+
+**✅ Do**:
+```gleam
+let agent = on_event(agent, fn(event) {
+  case event {
+    AgentStart -> io.println("Starting...")
+    Error(msg) -> io.println("Error: " <> msg)
+    _ -> Nil  // Handle all cases
+  }
+})
+```
+
+**❌ Don't**:
+```gleam
+let agent = on_event(agent, fn(event) {
+  // Missing pattern matches
+  case event {
+    AgentStart -> io.println("Starting...")
+  }
+})
+```
+
+### 2. Tool Definition
+
+**✅ Do**:
+```gleam
+let tool = define_tool(
+  "get_weather",
+  "Get current weather for a city",
+  ObjectSchema(
+    properties: [
+      #("city", StringSchema(Some("City name"))),
+      #("unit", StringSchema(Some("Temperature unit"))),
+    ],
+    required: ["city"],
+  ),
+  SequentialExecution,
+)
+```
+
+**❌ Don't**:
+```gleam
+let tool = define_tool(
+  "get_weather",
+  "",  // Missing description
+  ObjectSchema(properties: [], required: []),  // No schema
+  SequentialExecution,
+)
+```
+
+### 3. Error Handling
+
+**✅ Do**:
+```gleam
+let result = run(agent, api_key)
+let new_agent = case result {
+  Ok(agent) -> agent
+  Error(msg) -> {
+    let _ = emit(agent.emitter, Error(msg))
+    agent  // Return original agent on error
+  }
+}
+```
+
+**❌ Don't**:
+```gleam
+let result = run(agent, api_key)
+// No error handling
+```
+
+### 4. State Management
+
+**✅ Do**:
+```gleam
+// Immutable updates
+let agent = add_message(agent, User(message))
+let agent = add_message(agent, Assistant(response))
+```
+
+**❌ Don't**:
+```gleam
+// Mutating state (not possible in Gleam)
+agent.messages.append(message)
+```
+
+### 5. Streaming
+
+**✅ Do**:
+```gleam
+let _ = create_streaming_request(url, headers, body, fn(chunk, is_done) {
+  case is_done {
+    True -> io.println("Complete")
+    False -> process_chunk(chunk)
+  }
+})
+```
+
+**❌ Don't**:
+```gleam
+let _ = create_streaming_request(url, headers, body, fn(chunk, is_done) {
+  // Ignoring is_done flag
+  process_chunk(chunk)
+})
+```
+
+## Troubleshooting
+
+### Issue: Events Not Firing
+
+**Symptoms**: Event handlers not being called
+
+**Solution**:
+```gleam
+// Ensure emitter is attached
+let agent = new("prompt", Model("gpt-4"), Medium)
+let agent = on_event(agent, my_handler)  // Must attach before run
+let result = run(agent, api_key)
+```
+
+### Issue: Tool Not Found
+
+**Symptoms**: "Tool not found" error
+
+**Solution**:
+```gleam
+// Register tool before execution
+let registry = new_registry()
+let registry = register_tool(registry, "my_tool", handler)
+// Now execute_tool will find it
+```
+
+### Issue: Streaming Not Working
+
+**Symptoms**: No chunks received
+
+**Solution**:
+```gleam
+// Check headers and body format
+let headers = [
+  #("Authorization", "Bearer " <> api_key),
+  #("Content-Type", "application/json"),
+]
+let body = json.to_string(request_json)
+```
+
+### Issue: Type Mismatch in Pattern Matching
+
+**Symptoms**: Compiler error about pattern match
+
+**Solution**:
+```gleam
+// Import constructors properly
+import pi_agent/types.{AgentMessage, User, Assistant, ToolResult}
+
+// Use in pattern match
+case message {
+  User(msg) -> process_user(msg)
+  Assistant(msg) -> process_assistant(msg)
+  ToolResult(msg) -> process_tool_result(msg)
+}
+```
+
+### Issue: FFI Function Not Found
+
+**Symptoms**: JavaScript module not found
+
+**Solution**:
+```gleam
+// Ensure FFI file exists and exports correctly
+// event_ffi.mjs
+export function newEmitter() { ... }
+export function on(emitter, handler) { ... }
+export function emit(emitter, event) { ... }
+```
 
 ## Next Steps
 

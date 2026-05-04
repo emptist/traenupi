@@ -51,9 +51,11 @@ export function divide(x, y) {
 
 ## Current Architecture
 
-### Glen Web Framework
+TraeNuPI now supports two web frameworks: **Glen** for JavaScript target and **Wisp** for Erlang target.
 
-TraeNuPI uses Glen framework for HTTP handling:
+### Option 1: Glen Web Framework (JavaScript Target)
+
+TraeNuPI uses Glen framework for HTTP handling when targeting JavaScript:
 
 ```
 ├─ Database: node_pg (Gleam native) - NO FFI ✅
@@ -64,6 +66,35 @@ TraeNuPI uses Glen framework for HTTP handling:
 │  └─ Node.js adapter - 1 FFI function ✅
 └─ Imports: Node.js subpath imports - NO FFI ✅
 ```
+
+### Option 2: Wisp Web Framework (Erlang Target)
+
+For Erlang target, TraeNuPI can use Wisp framework:
+
+```
+├─ Database: Full Erlang ecosystem (PostgreSQL, MySQL, etc.)
+├─ HTTP: Wisp framework - ZERO FFI ✅
+│  ├─ Built-in middleware (logging, crash rescue) ✅
+│  ├─ Mist HTTP server (high performance) ✅
+│  ├─ WebSocket support ✅
+│  ├─ Static file serving ✅
+│  ├─ Session management ✅
+│  └─ HTML escaping ✅
+└─ Runtime: Erlang/OTP with fault tolerance ✅
+```
+
+### Comparison
+
+| Feature | Glen (JavaScript) | Wisp (Erlang) |
+|---------|------------------|---------------|
+| FFI Required | Minimal (1 function) | None |
+| Target Runtime | Node.js/Deno/Bun | Erlang/OTP |
+| Fault Tolerance | Manual | Built-in (OTP) |
+| Hot Code Reload | No | Yes |
+| Deployment | Serverless-friendly | Traditional servers |
+| Ecosystem | npm packages | Hex packages |
+
+See [WISP_VS_GLEN.md](./WISP_VS_GLEN.md) for detailed comparison.
 
 ### HTTP Server Implementation
 

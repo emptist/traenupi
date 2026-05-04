@@ -999,44 +999,61 @@ pub fn load_session(
 
 ## Technical Decisions
 
-### 0. Why Glimr Framework? 🎯
+### 0. Web Framework Selection: Glen vs Wisp 🎯
 
-**Context**: TraeNuPI needs HTTP server, session management, CLI commands, and database integration.
+**Context**: TraeNuPI needs HTTP server, session management, and database integration for both JavaScript and Erlang targets.
 
 **Options Evaluated**:
 
-| Framework | Pros | Cons | Verdict |
-|-----------|------|------|---------|
-| **Wisp** (Official) | ✅ Official support<br>✅ Lightweight<br>✅ Good documentation | ❌ No session management<br>❌ No authentication<br>❌ No console commands<br>❌ Manual PostgreSQL setup | Too basic |
-| **Glimr** | ✅ PostgreSQL native<br>✅ Session management<br>✅ Authentication<br>✅ Console commands<br>✅ Template engine<br>✅ Minimal FFI | ❌ Newer project<br>❌ Medium learning curve | **✅ CHOSEN** |
-| **Lustre** | ✅ Frontend + Backend<br>✅ LiveView style<br>✅ Real-time support | ❌ Frontend focused<br>❌ No session/auth built-in<br>❌ Different use case | Not suitable |
+| Framework | Target | Pros | Cons | Best For |
+|-----------|--------|------|------|----------|
+| **Glen** | JavaScript | ✅ Minimal FFI (1 function)<br>✅ Node.js ecosystem<br>✅ Serverless-friendly<br>✅ Team familiarity | ❌ Manual error handling<br>❌ No hot reload<br>❌ Event loop limitations | HTTP APIs, Serverless |
+| **Wisp** | Erlang | ✅ Zero FFI<br>✅ OTP fault tolerance<br>✅ Hot code reload<br>✅ Built-in middleware<br>✅ Crash rescue | ❌ Erlang runtime required<br>❌ Learning curve<br>❌ No npm packages | Long-running services, Real-time |
 
-**Decision**: **Use Glimr** as the foundation for TraeNuPI
+**Decision**: **Use Both** - Hybrid Architecture
 
 **Rationale**:
-1. **PostgreSQL Native Support**: Direct integration with our `nezha` database
-2. **Session Management**: Built-in support for daemon sessions
-3. **Console Commands**: Perfect for TraeNuPI CLI tools
-4. **Minimal FFI**: Reduces dependency on Node.js interop
-5. **Type Safety**: Full Gleam native implementation
-6. **Batteries Included**: Authentication, caching, migrations all built-in
+1. **Glen for HTTP APIs**: JavaScript target for lightweight HTTP endpoints
+2. **Wisp for Core Service**: Erlang target for daemon process with fault tolerance
+3. **Best of Both Worlds**: Leverage strengths of each framework
 
 **Impact on Architecture**:
 ```
-Before Glimr:
-├─ HTTP Server: FFI to Node.js ❌
-├─ Session: Manual implementation ❌
-├─ CLI: FFI to Node.js ❌
-├─ Database: node_pg ✅
-└─ Auth: Not implemented ❌
-
-After Glimr:
-├─ HTTP Server: Glimr (Gleam) ✅
-├─ Session: Glimr (PostgreSQL) ✅
-├─ CLI: Glimr console commands ✅
-├─ Database: Glimr + node_pg ✅
-└─ Auth: Glimr authentication ✅
+TraeNuPI Hybrid Architecture:
+├─ Core Service (Wisp - Erlang)
+│  ├─ Daemon process ✅
+│  ├─ Background tasks ✅
+│  ├─ WebSocket connections ✅
+│  ├─ OTP supervision ✅
+│  └─ Hot code reload ✅
+│
+└─ HTTP API (Glen - JavaScript)
+   ├─ REST endpoints ✅
+   ├─ Serverless deployment ✅
+   ├─ npm ecosystem ✅
+   └─ Lightweight requests ✅
 ```
+
+**Implementation Status**:
+- ✅ Glen experimental project: `gleam/traenupi_app`
+- ✅ Wisp experimental project: `gleam/wisp_experimental`
+- ✅ Comprehensive comparison: `docs/WISP_VS_GLEN.md`
+
+**When to Use Each**:
+
+**Choose Wisp (Erlang) for**:
+- Long-running daemon processes
+- Real-time applications (WebSocket)
+- High-concurrency systems
+- Fault-tolerant services
+- Hot code updates required
+
+**Choose Glen (JavaScript) for**:
+- Simple HTTP APIs
+- Serverless deployments
+- npm package integration
+- Quick prototypes
+- Team familiar with Node.js
 
 ### 1. Why Gleam Instead of TypeScript?
 
@@ -1246,13 +1263,44 @@ After Glimr:
 
 ---
 
+## Architecture Design Document 📐
+
+**See**: [PI Agent Gleam Architecture Design](./PI_AGENT_GLEAM_ARCHITECTURE.md)
+
+A comprehensive architecture design document has been created that details:
+
+1. **Core Type System** - AgentMessage, AgentState, Tool, Event types
+2. **Agent Loop Architecture** - Functional recursive implementation
+3. **LLM Integration** - Provider abstraction and streaming
+4. **Event Stream Implementation** - Process-based event emission
+5. **Configuration System** - AgentLoopConfig and hooks
+6. **Error Handling** - Result-based error management
+7. **TraeNuPI-Specific Features** - Knowledge, Tasks, Communication tools
+8. **Implementation Strategy** - 10-week phased approach
+
+**Key Design Decisions**:
+- **Functional Recursion** - Idiomatic Gleam, no mutable state
+- **Process-Based Events** - Native Gleam concurrency
+- **Result Type Errors** - Type-safe error handling
+- **Message Separation** - AgentMessage vs LlmMessage
+
+**Implementation Phases**:
+- Phase 1: Core Types (Week 1)
+- Phase 2: Event Stream (Week 2)
+- Phase 3: Agent Loop (Week 3-4)
+- Phase 4: LLM Integration (Week 5-6)
+- Phase 5: TraeNuPI Tools (Week 7-8)
+- Phase 6: Integration & Testing (Week 9-10)
+
+---
+
 ## Next Steps
 
-1. **Review this document** with the team
-2. **Prioritize phases** based on immediate needs
-3. **Set up development environment** (Gleam, Node.js, PostgreSQL with nezha DB)
-4. **Start Phase 1** implementation
-5. **Weekly progress reviews** and plan adjustments
+1. **Review architecture design** - See [PI_AGENT_GLEAM_ARCHITECTURE.md](./PI_AGENT_GLEAM_ARCHITECTURE.md)
+2. **Set up project structure** - Create `gleam/pi_agent` package
+3. **Begin Phase 1** - Core type definitions
+4. **Establish testing framework** - Gleam test infrastructure
+5. **Weekly progress reviews** - Track implementation progress
 
 ---
 
@@ -1269,6 +1317,30 @@ After Glimr:
 ---
 
 ## Changelog
+
+### 2026-05-04 (Phase 1 Foundation Complete ✅)
+- **Major Milestone**: Phase 1 - Foundation implementation complete
+- **Core Types**: All types defined and tested (AgentMessage, LlmMessage, ContentBlock, StopReason, etc.)
+- **JSON Serialization**: Complete encoding/decoding system with 35 passing tests
+- **OpenRouter Client**: Full implementation with streaming support
+- **FFI Integration**: Node.js fetch API integration for HTTP requests
+- **Documentation**: Created GLEAM_PRACTICE_SUMMARY.md with practical insights
+- **Example Code**: Added openrouter_example.gleam for testing
+- **Test Coverage**: 35 tests passing, including roundtrip tests
+- **Key Achievements**:
+  - Type-safe message handling
+  - Composable decoder pattern
+  - Promise-based async operations
+  - SSE streaming support
+  - Error handling with custom types
+
+### 2026-05-04 (Architecture Design Update)
+- **Major Addition**: Created comprehensive Gleam architecture design
+- **New Document**: PI_AGENT_GLEAM_ARCHITECTURE.md
+- **Design Decisions**: Functional recursion, Process-based events, Result type errors
+- **Implementation Strategy**: 10-week phased approach
+- **Key Features**: TraeNuPI-specific tools (Knowledge, Tasks, Communication)
+- **Updated Timeline**: Revised phases based on Gleam-specific needs
 
 ### 2026-05-04 (Glimr Integration Update)
 - **Major Addition**: Integrated Glimr framework as foundation

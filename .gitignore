@@ -6,3 +6,8 @@ dist/
 deprecated/
 __tmp_test__/
 meeting-*.md
+
+# Gleam build artifacts
+gleam/*/build/
+gleam/*/.gleam/
+*.beam

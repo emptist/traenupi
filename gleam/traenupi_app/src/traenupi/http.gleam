@@ -1,43 +1,24 @@
 //// TraeNuPI HTTP Server
 ////
-//// A minimal HTTP server for TraeNuPI daemon operations.
-//// Provides health check, status, and API endpoints using minimal FFI.
+//// A web server for TraeNuPI daemon operations using Glen framework.
+//// Provides health check, status, and API endpoints.
 
 import gleam/io
 import gleam/int
-import gleam/javascript/promise
+import gleam/javascript/promise.{type Promise}
 import gleam/json
+import glen
+import glen/status
 import node_pg
-
-pub type Server
-
-pub type Request {
-  Request(method: String, path: String, headers: List(#(String, String)))
-}
-
-pub type Response {
-  Response(status: Int, headers: List(#(String, String)), body: String)
-}
 
 pub type AppState {
   AppState(db_client: node_pg.Client, db_connected: Bool)
 }
 
 @external(javascript, "./http_ffi.mjs", "createServer")
-fn create_server_internal(handler: fn(Request) -> fn(Response) -> Nil) -> Server
+fn create_server_node(port: Int, handler: fn(glen.JsRequest) -> Promise(glen.JsResponse)) -> Nil
 
-@external(javascript, "./http_ffi.mjs", "listen")
-fn listen_internal(server: Server, port: Int, callback: fn() -> Nil) -> Nil
-
-@external(javascript, "./http_ffi.mjs", "writeResponse")
-fn write_response_internal(
-  res: Response,
-  status: Int,
-  headers: List(#(String, String)),
-  body: String,
-) -> Nil
-
-pub fn start_server(port: Int, db_config: node_pg.Config) {
+pub fn start_server(port: Int, db_config: node_pg.Config) -> Promise(Nil) {
   let client = node_pg.new_client(db_config)
   
   io.println("Starting TraeNuPI HTTP server on port " <> int.to_string(port))
@@ -49,23 +30,13 @@ pub fn start_server(port: Int, db_config: node_pg.Config) {
         io.println("✓ Database connected")
         let state = AppState(db_client: client, db_connected: True)
         
-        let handler = fn(req: Request) {
-          let response = handle_request(req, state)
-          fn(res: Response) {
-            write_response_internal(res, response.status, response.headers, response.body)
-          }
-        }
+        io.println("✓ HTTP server starting on port " <> int.to_string(port))
+        io.println("  Endpoints:")
+        io.println("    - GET /health  - Health check")
+        io.println("    - GET /status  - Server status")
+        io.println("    - GET /api/tasks - List tasks")
         
-        let server = create_server_internal(handler)
-        let callback = fn() {
-          io.println("✓ HTTP server started on port " <> int.to_string(port))
-          io.println("  Endpoints:")
-          io.println("    - GET /health  - Health check")
-          io.println("    - GET /status  - Server status")
-          io.println("    - GET /api/tasks - List tasks")
-        }
-        
-        listen_internal(server, port, callback)
+        create_server_node(port, fn(req) { handle_request_js(req, state) })
         promise.resolve(Nil)
       }
       Error(error) -> {
@@ -76,69 +47,73 @@ pub fn start_server(port: Int, db_config: node_pg.Config) {
   })
 }
 
-fn handle_request(req: Request, state: AppState) -> Response {
-  case req.path {
-    "/health" -> health_check()
-    "/status" -> server_status(state)
-    "/api/tasks" -> api_tasks(state)
+fn handle_request_js(req: glen.JsRequest, state: AppState) -> Promise(glen.JsResponse) {
+  let gleam_req = glen.convert_request(req)
+  let response = handle_request(gleam_req, state)
+  promise.map(response, fn(res) { glen.convert_response(res) })
+}
+
+fn handle_request(req: glen.Request, state: AppState) -> Promise(glen.Response) {
+  case glen.path_segments(req) {
+    ["health"] -> health_check()
+    ["status"] -> server_status(state)
+    ["api", "tasks"] -> api_tasks(state)
     _ -> not_found()
   }
 }
 
-fn health_check() -> Response {
-  Response(
-    status: 200,
-    headers: [#("content-type", "application/json")],
-    body: json.to_string(json.object([
-      #("status", json.string("ok")),
-      #("service", json.string("TraeNuPI")),
-      #("timestamp", json.string(get_timestamp())),
-    ])),
-  )
+fn health_check() -> Promise(glen.Response) {
+  json.object([
+    #("status", json.string("ok")),
+    #("service", json.string("TraeNuPI")),
+    #("timestamp", json.string(get_timestamp())),
+    #("framework", json.string("Glen")),
+  ])
+  |> json.to_string
+  |> glen.json(status.ok)
+  |> promise.resolve
 }
 
-fn server_status(state: AppState) -> Response {
+fn server_status(state: AppState) -> Promise(glen.Response) {
   let db_status = case state.db_connected {
     True -> "connected"
     False -> "disconnected"
   }
   
-  Response(
-    status: 200,
-    headers: [#("content-type", "application/json")],
-    body: json.to_string(json.object([
-      #("status", json.string("running")),
-      #("database", json.string(db_status)),
-      #("version", json.string("1.0.0")),
-      #("client", json.string("node_pg")),
-    ])),
-  )
+  json.object([
+    #("status", json.string("running")),
+    #("database", json.string(db_status)),
+    #("version", json.string("1.0.0")),
+    #("client", json.string("node_pg")),
+    #("framework", json.string("Glen")),
+  ])
+  |> json.to_string
+  |> glen.json(status.ok)
+  |> promise.resolve
 }
 
-fn api_tasks(_state: AppState) -> Response {
-  Response(
-    status: 200,
-    headers: [#("content-type", "application/json")],
-    body: json.to_string(json.object([
-      #("tasks", json.array([], fn(_) {
-        json.object([
-          #("id", json.string("1")),
-          #("title", json.string("Sample task")),
-          #("status", json.string("pending")),
-        ])
-      })),
-    ])),
-  )
+fn api_tasks(_state: AppState) -> Promise(glen.Response) {
+  json.object([
+    #("tasks", json.array([], fn(_) {
+      json.object([
+        #("id", json.string("1")),
+        #("title", json.string("Sample task")),
+        #("status", json.string("pending")),
+      ])
+    })),
+  ])
+  |> json.to_string
+  |> glen.json(status.ok)
+  |> promise.resolve
 }
 
-fn not_found() -> Response {
-  Response(
-    status: 404,
-    headers: [#("content-type", "application/json")],
-    body: json.to_string(json.object([
-      #("error", json.string("Not found")),
-    ])),
-  )
+fn not_found() -> Promise(glen.Response) {
+  json.object([
+    #("error", json.string("Not found")),
+  ])
+  |> json.to_string
+  |> glen.json(status.not_found)
+  |> promise.resolve
 }
 
 fn get_timestamp() -> String {

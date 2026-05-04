@@ -1,62 +1,10 @@
+import type * as $conversation from "../../conversation/conversation.d.mts";
+import type * as $request from "../../gleam_http/gleam/http/request.d.mts";
+import type * as $response from "../../gleam_http/gleam/http/response.d.mts";
 import type * as $promise from "../../gleam_javascript/gleam/javascript/promise.d.mts";
+import type * as $glen from "../../glen/glen.d.mts";
 import type * as $node_pg from "../../node_pg/node_pg.d.mts";
 import type * as _ from "../gleam.d.mts";
-
-export type Server$ = any;
-
-export class Request extends _.CustomType {
-  /** @deprecated */
-  constructor(method: string, path: string, headers: _.List<[string, string]>);
-  /** @deprecated */
-  method: string;
-  /** @deprecated */
-  path: string;
-  /** @deprecated */
-  headers: _.List<[string, string]>;
-}
-export function Request$Request(
-  method: string,
-  path: string,
-  headers: _.List<[string, string]>,
-): Request$;
-export function Request$isRequest(value: Request$): boolean;
-export function Request$Request$0(value: Request$): string;
-export function Request$Request$method(value: Request$): string;
-export function Request$Request$1(value: Request$): string;
-export function Request$Request$path(value: Request$): string;
-export function Request$Request$2(value: Request$): _.List<[string, string]>;
-export function Request$Request$headers(value: Request$): _.List<
-  [string, string]
->;
-
-export type Request$ = Request;
-
-export class Response extends _.CustomType {
-  /** @deprecated */
-  constructor(status: number, headers: _.List<[string, string]>, body: string);
-  /** @deprecated */
-  status: number;
-  /** @deprecated */
-  headers: _.List<[string, string]>;
-  /** @deprecated */
-  body: string;
-}
-export function Response$Response(
-  status: number,
-  headers: _.List<[string, string]>,
-  body: string,
-): Response$;
-export function Response$isResponse(value: Response$): boolean;
-export function Response$Response$0(value: Response$): number;
-export function Response$Response$status(value: Response$): number;
-export function Response$Response$1(value: Response$): _.List<[string, string]>;
-export function Response$Response$headers(value: Response$): _.List<
-  [string, string]
->;
-export function Response$Response$2(value: Response$): string;
-export function Response$Response$body(value: Response$): string;
-
-export type Response$ = Response;
 
 export class AppState extends _.CustomType {
   /** @deprecated */

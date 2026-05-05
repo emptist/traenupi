@@ -60,13 +60,20 @@ export function getMeetingOpinions(meetingId: string): MeetingOpinion[] {
   });
 }
 
-export function addOpinion(meetingId: string, author: string, message: string): boolean {
+export function addOpinion(
+  meetingId: string, 
+  author: string, 
+  message: string, 
+  position: string = "support"
+): boolean {
   const resolvedId = resolveMeetingId(meetingId);
   if (!resolvedId) return false;
 
   const safeMessage = message.replace(/'/g, "''");
+  const validPosition = ["support", "oppose", "neutral"].includes(position) ? position : "support";
+  
   return psqlExec(
-    `INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${resolvedId}', '${author}', '${safeMessage}', 'support');`
+    `INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${resolvedId}', '${author}', '${safeMessage}', '${validPosition}');`
   );
 }
 

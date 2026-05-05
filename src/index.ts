@@ -1921,10 +1921,13 @@ EXAMPLES:
     
     if (subCommand === "say" || subCommand === "opinion") {
       const meetingId = args[2];
-      const message = args.slice(3).join(" ");
+      const flags = args.slice(3);
       
-      if (!meetingId || !message) {
+      const useJson = flags.includes("--json") || flags.includes("-j");
+      
+      if (!meetingId) {
         console.log("[ERROR] Usage: traenupi meeting say <meeting_id> <message>");
+        console.log("        traenupi meeting say <meeting_id> --json (reads from stdin)");
         return;
       }
       
@@ -1935,9 +1938,40 @@ EXAMPLES:
         return;
       }
       
+      let message: string;
+      let position: string | undefined;
+      
+      if (useJson) {
+        try {
+          const { readStdinJson, parseJsonMeetingOpinion } = await import("./common/json-input.js");
+          const jsonInput = await readStdinJson();
+          
+          if (!jsonInput.trim()) {
+            console.log("[ERROR] No JSON input received from stdin");
+            return;
+          }
+          
+          const opinion = parseJsonMeetingOpinion(jsonInput);
+          message = opinion.perspective;
+          position = opinion.position;
+          
+          console.log("[TRAENUPI] Parsed JSON input successfully");
+        } catch (error) {
+          console.log(`[ERROR] ${error instanceof Error ? error.message : String(error)}`);
+          return;
+        }
+      } else {
+        message = flags.join(" ");
+        if (!message) {
+          console.log("[ERROR] Usage: traenupi meeting say <meeting_id> <message>");
+          console.log("        traenupi meeting say <meeting_id> --json (reads from stdin)");
+          return;
+        }
+      }
+      
       const agentId = getAgentId();
 
-      addOpinion(fullId, agentId, message);
+      addOpinion(fullId, agentId, message, position);
 
       console.log(`[TRAENUPI] Opinion added to meeting ${fullId.substring(0, 8)}`);
       return;

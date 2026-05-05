@@ -77,6 +77,7 @@ import { recordMood, showMoodHistory } from "./trae/mood.js";
 import { crossMeetingSearch, recommendMeetings, autoSummarizeMeeting, showAllAIs, showMeetingTemplates, createMeetingFromTemplate } from "./trae/meeting-utils.js";
 import { addBookmark, listBookmarks } from "./trae/bookmarks.js";
 import { scanSkills, autoImproveTriggerPhrases, autoImproveDescription, scoreSkillCompleteness, identifyGaps, generateTriggerPhrases, buildSkillImprovementPrompt, parseSkillImprovementResponse, applySkillImprovement, filterSkillsForBatch, type SkillScanResult, type SkillRecord, type BatchImproveOptions, type BatchImproveResult, type BatchImproveSummary } from "./trae/skill-improver.js";
+import { importSkillFromSource, printImportResults, type ImportOptions } from "./trae/skill-importer.js";
 import { checkMeetingNotifications, checkBabyAIParticipation, runDaemon, showStatus } from "./trae/daemon.js";
 import { initProject } from "./trae/init.js";
 
@@ -154,6 +155,9 @@ COMMANDS:
   skill improve <id>      Auto-improve a skill (trigger phrases, tags)
   skill ai-improve <id>   AI-powered improvement (description, instructions)
   skill triggers <id>     Auto-generate trigger phrases
+  skill import <url>      Import skills from external sources
+                          Supports: GitHub repos, URLs, local files
+                          Options: --dry-run, --force, --db, --name <name>
 
 MEETING COMMANDS:
   meeting                 List active meetings
@@ -1259,6 +1263,43 @@ EXAMPLES:
       } else {
         console.log(`[TRAENUPI] ❌ Failed to generate trigger phrases for skill ${fullId.substring(0, 8)}`);
       }
+      return;
+    }
+
+    if (subCommand === "import") {
+      const source = args[2];
+      if (!source) {
+        console.log("[ERROR] Usage: traenupi skill import <url>");
+        console.log("\nSupported sources:");
+        console.log("  - GitHub repositories: https://github.com/user/repo");
+        console.log("  - GitHub files: https://github.com/user/repo/blob/main/skill.md");
+        console.log("  - Raw URLs: https://raw.githubusercontent.com/user/repo/main/skill.md");
+        console.log("  - Local files: /path/to/skill.md");
+        console.log("  - Local directories: /path/to/skills/");
+        console.log("\nOptions:");
+        console.log("  --dry-run     Preview without importing");
+        console.log("  --force       Overwrite existing skills");
+        console.log("  --db          Store in database instead of file");
+        console.log("  --name <name> Use custom skill name");
+        return;
+      }
+
+      const options: ImportOptions = {
+        dryRun: args.includes("--dry-run"),
+        force: args.includes("--force"),
+        useDb: args.includes("--db"),
+      };
+
+      const nameIndex = args.indexOf("--name");
+      if (nameIndex !== -1 && args[nameIndex + 1]) {
+        options.customName = args[nameIndex + 1];
+      }
+
+      console.log(`[TRAENUPI] Importing skills from: ${source}`);
+      if (options.dryRun) console.log("   (dry-run mode - no changes will be made)");
+      
+      const results = importSkillFromSource(source, options);
+      printImportResults(results);
       return;
     }
 

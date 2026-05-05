@@ -206,3 +206,127 @@ The model (qwen2.5coder:7b) is simple:
 - Bad for complex reasoning
 
 Keep expectations aligned with model capabilities.
+
+## Pi Integration
+
+### Pi's Native Skill System
+
+Pi has a native skill system following the [Agent Skills standard](https://agentskills.io/specification). Understanding this is CRITICAL for proper integration.
+
+#### Skill Locations
+
+Pi loads skills from:
+- Global:
+  - `~/.pi/agent/skills/`
+  - `~/.agents/skills/`
+- Project:
+  - `.pi/skills/`
+  - `.agents/skills/` in `cwd` and ancestor directories
+- Packages: `skills/` directories or `pi.skills` entries in `package.json`
+- Settings: `skills` array with files or directories
+- CLI: `--skill <path>` (repeatable)
+
+#### Skill Format
+
+Skills are directories with `SKILL.md` file:
+
+```markdown
+---
+name: skill-name
+description: What this skill does and when to use it. Be specific.
+---
+
+# Skill Title
+
+Instructions and usage...
+```
+
+**Critical:** The format is IDENTICAL to TraeNuPI's skill format!
+
+#### How Pi Uses Skills
+
+1. At startup, pi scans skill locations and extracts names and descriptions
+2. The system prompt includes available skills in XML format
+3. When a task matches, the agent uses `read` to load the full SKILL.md
+4. The agent follows the instructions, using relative paths to reference scripts
+
+This is **progressive disclosure**: only descriptions are always in context, full instructions load on-demand.
+
+#### Current Mistake
+
+TraeNuPI currently disables pi's native skills with `--no-skills` flag:
+
+```typescript
+export const PI_FLAGS = ["--no-tools", "--no-context-files", "--no-skills", "--no-prompt-templates", "--no-extensions"];
+```
+
+This is WRONG because:
+- We're fighting against pi's design
+- We're reinventing the wheel
+- We're not leveraging pi's native capabilities
+
+#### Correct Integration Strategy
+
+**Option A: Use pi's native skills (RECOMMENDED)**
+1. Remove `--no-skills` from PI_FLAGS
+2. Sync database skills to pi's skill directories
+3. Let pi handle skill discovery and loading
+4. Leverage pi's progressive disclosure system
+
+**Option B: Hybrid approach**
+1. Keep `--no-skills` for specific use cases
+2. Add skill context manually when needed
+3. Use both approaches selectively
+
+**Option C: Database-first approach**
+1. Keep `--no-skills`
+2. Build custom skill retrieval system
+3. Inject skills into context manually
+
+**Recommendation:** Use Option A (pi's native skills) as the primary approach.
+
+#### Skill Commands
+
+Skills register as `/skill:name` commands:
+
+```bash
+/skill:brave-search           # Load and execute the skill
+/skill:pdf-tools extract      # Load skill with arguments
+```
+
+#### Skill Repositories
+
+- [Anthropic Skills](https://github.com/anthropics/skills) - Document processing
+- [Pi Skills](https://github.com/badlogic/pi-skills) - Web search, browser automation
+
+### Integration Requirements
+
+For TraeNuPI to properly use pi's skills:
+
+1. **Sync database skills to file system**
+   - Export skills from database to `.pi/skills/` or `~/.pi/agent/skills/`
+   - Keep file system and database in sync
+   - Handle bidirectional updates
+
+2. **Remove `--no-skills` flag**
+   - Let pi discover and load skills natively
+   - Leverage pi's progressive disclosure
+   - Use pi's skill matching algorithm
+
+3. **Skill import workflow**
+   - `traenupi skill import <url>` → file system (pi can use immediately)
+   - `traenupi skill import <url> --db` → database (needs sync to files)
+   - `traenupi skill sync` → sync database to file system
+
+4. **Testing**
+   - Test pi with skills enabled vs disabled
+   - Verify skill discovery and loading
+   - Ensure progressive disclosure works
+
+### Why This Matters
+
+- **Don't reinvent the wheel**: Pi already has a sophisticated skill system
+- **Work with pi's design**: Not against it
+- **Progressive disclosure**: Only load what's needed
+- **Standard compliance**: Agent Skills standard for interoperability
+- **Better performance**: Pi's native system is optimized

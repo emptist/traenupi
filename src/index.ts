@@ -158,6 +158,10 @@ COMMANDS:
   skill import <url>      Import skills from external sources
                           Supports: GitHub repos, URLs, local files
                           Options: --dry-run, --force, --db, --name <name>
+  skill sync [direction]  Sync skills between database and file system
+                          No args: sync both directions
+                          --to-db, -d: file system → database
+                          --to-files, -f: database → file system
 
 MEETING COMMANDS:
   meeting                 List active meetings
@@ -1300,6 +1304,32 @@ EXAMPLES:
       
       const results = importSkillFromSource(source, options);
       printImportResults(results);
+      return;
+    }
+
+    if (subCommand === "sync") {
+      const direction = args[2];
+      
+      const { syncDatabaseSkillsToPi, syncFileSystemSkillsToDb, printSyncResults } = await import("./trae/skill-importer.js");
+      
+      if (direction === "--to-db" || direction === "-d") {
+        console.log("[TRAENUPI] Syncing file system skills to database...");
+        const results = syncFileSystemSkillsToDb();
+        printSyncResults(results);
+      } else if (direction === "--to-files" || direction === "-f") {
+        console.log("[TRAENUPI] Syncing database skills to pi skill directory...");
+        const results = syncDatabaseSkillsToPi();
+        printSyncResults(results);
+      } else {
+        console.log("[TRAENUPI] Syncing both directions...");
+        console.log("\n1. File system → Database:");
+        const results1 = syncFileSystemSkillsToDb();
+        printSyncResults(results1);
+        
+        console.log("\n2. Database → File system:");
+        const results2 = syncDatabaseSkillsToPi();
+        printSyncResults(results2);
+      }
       return;
     }
 

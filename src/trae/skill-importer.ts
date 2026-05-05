@@ -1,8 +1,13 @@
 import { execSync } from "node:child_process";
-import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
-import { psqlExec } from "../common/db.js";
+import { psqlExec, getDbConfig } from "../common/db.js";
+
+function getDbName(): string {
+  const config = getDbConfig();
+  return config.database || "psypi";
+}
 
 export interface ImportedSkill {
   name: string;
@@ -303,10 +308,10 @@ export function importSkillFromSource(
     if (options.useDb) {
       const escapedDesc = skill.description.replace(/'/g, "''");
       const escapedInstructions = skill.content.replace(/'/g, "''");
-      const contentJson = `{"markdown": "${escapedInstructions.replace(/\n/g, "\\n").replace(/"/g, '\\"')}"}`;
+      const contentJson = JSON.stringify({ markdown: skill.content }).replace(/'/g, "''");
       
       const checkSql = `SELECT id FROM skills WHERE name = '${skill.name}'`;
-      const existingId = execSync(`psql -h localhost -U postgres -d nezha -t -c "${checkSql}"`, { encoding: "utf-8" }).trim();
+      const existingId = execSync(`psql -h localhost -U postgres -d ${getDbName()} -t -c "${checkSql}"`, { encoding: "utf-8" }).trim();
       
       if (existingId && !options.force) {
         results.push({
@@ -319,19 +324,25 @@ export function importSkillFromSource(
       
       let sql: string;
       if (existingId && options.force) {
-        sql = `UPDATE skills SET 
-               description = '${escapedDesc}', 
-               instructions = '${escapedInstructions}',
-               content = '${contentJson}'::jsonb,
-               source = 'imported',
-               updated_at = NOW()
-               WHERE name = '${skill.name}'`;
+        sql = `UPDATE skills SET description = '${escapedDesc}', instructions = '${escapedInstructions}', content = '${contentJson}'::jsonb, source = 'imported', updated_at = NOW() WHERE name = '${skill.name}'`;
       } else {
-        sql = `INSERT INTO skills (id, name, description, instructions, content, source) 
-               VALUES (gen_random_uuid(), '${skill.name}', '${escapedDesc}', '${escapedInstructions}', '${contentJson}'::jsonb, 'imported')`;
+        sql = `INSERT INTO skills (id, name, description, instructions, content, source) VALUES (gen_random_uuid(), '${skill.name}', '${escapedDesc}', '${escapedInstructions}', '${contentJson}'::jsonb, 'imported')`;
       }
       
-      const success = psqlExec(sql, { silent: true });
+      const tmpFile = join(homedir(), ".traenupi-import-skill.sql");
+      writeFileSync(tmpFile, sql);
+      
+      let success = false;
+      try {
+        execSync(`psql -h localhost -U postgres -d ${getDbName()} -f ${tmpFile}`, { encoding: "utf-8" });
+        success = true;
+      } catch {
+        success = false;
+      } finally {
+        if (existsSync(tmpFile)) {
+          unlinkSync(tmpFile);
+        }
+      }
       
       results.push({
         success: success,
@@ -401,4 +412,189 @@ export function printImportResults(results: ImportResult[]): void {
   }
   
   console.log("");
+}
+
+export interface SyncResult {
+  name: string;
+  success: boolean;
+  error?: string;
+}
+
+export function syncDatabaseSkillsToPi(): SyncResult[] {
+  const results: SyncResult[] = [];
+  
+  const query = "SELECT name, description, instructions FROM skills";
+  const output = execSync(
+    `psql -h localhost -U postgres -d ${getDbName()} -t -A -F'|' -c "${query}"`,
+    { encoding: "utf-8" }
+  ).trim();
+  
+  if (!output) {
+    console.log("No skills found in database");
+    return results;
+  }
+  
+  const piSkillsDir = join(homedir(), ".pi", "agent", "skills");
+  
+  if (!existsSync(piSkillsDir)) {
+    mkdirSync(piSkillsDir, { recursive: true });
+  }
+  
+  const lines = output.split("\n");
+  
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    
+    const [name, description, instructions] = line.split("|");
+    
+    if (!name || !description) {
+      results.push({
+        name: name || "unknown",
+        success: false,
+        error: "Missing required fields",
+      });
+      continue;
+    }
+    
+    const skillDir = join(piSkillsDir, name);
+    const skillFile = join(skillDir, "SKILL.md");
+    
+    try {
+      if (!existsSync(skillDir)) {
+        mkdirSync(skillDir, { recursive: true });
+      }
+      
+      const skillContent = `---
+name: ${name}
+description: ${description}
+---
+
+${instructions || ""}
+`;
+      
+      writeFileSync(skillFile, skillContent, "utf-8");
+      
+      results.push({
+        name: name,
+        success: true,
+      });
+    } catch (error) {
+      results.push({
+        name: name,
+        success: false,
+        error: `Failed to write skill: ${error}`,
+      });
+    }
+  }
+  
+  return results;
+}
+
+export function printSyncResults(results: SyncResult[]): void {
+  console.log("\n=== Skill Sync Results ===\n");
+  
+  const succeeded = results.filter(r => r.success);
+  const failed = results.filter(r => !r.success);
+  
+  console.log(`Total skills: ${results.length}`);
+  console.log(`✅ Synced to pi: ${succeeded.length}`);
+  console.log(`❌ Failed: ${failed.length}`);
+  
+  if (failed.length > 0) {
+    console.log("\nFailed skills:");
+    for (const result of failed) {
+      console.log(`  - ${result.name}: ${result.error}`);
+    }
+  }
+  
+  console.log(`\nSkills are now available in: ~/.pi/agent/skills/`);
+  console.log("Pi will discover them automatically on next invocation.\n");
+}
+
+export function syncFileSystemSkillsToDb(): SyncResult[] {
+  const results: SyncResult[] = [];
+  
+  const traeSkillsDir = join(homedir(), ".trae", "skills");
+  
+  if (!existsSync(traeSkillsDir)) {
+    console.log("No .trae/skills directory found");
+    return results;
+  }
+  
+  const skillDirs = readdirSync(traeSkillsDir, { withFileTypes: true })
+    .filter((dirent) => dirent.isDirectory())
+    .map((dirent) => dirent.name);
+  
+  for (const skillDir of skillDirs) {
+    const skillFile = join(traeSkillsDir, skillDir, "SKILL.md");
+    
+    if (!existsSync(skillFile)) {
+      results.push({
+        name: skillDir,
+        success: false,
+        error: "No SKILL.md file found",
+      });
+      continue;
+    }
+    
+    try {
+      const content = readFileSync(skillFile, "utf-8");
+      const skill = parseSkill(content, skillFile);
+      
+      if (!skill) {
+        results.push({
+          name: skillDir,
+          success: false,
+          error: "Failed to parse skill format",
+        });
+        continue;
+      }
+      
+      const escapedDesc = skill.description.replace(/'/g, "''");
+      const escapedInstructions = skill.content.replace(/'/g, "''");
+      const contentJson = JSON.stringify({ markdown: skill.content }).replace(/'/g, "''");
+      
+      const checkSql = `SELECT id FROM skills WHERE name = '${skill.name}'`;
+      const existingId = execSync(
+        `psql -h localhost -U postgres -d ${getDbName()} -t -c "${checkSql}"`,
+        { encoding: "utf-8" }
+      ).trim();
+      
+      let sql: string;
+      if (existingId) {
+        sql = `UPDATE skills SET description = '${escapedDesc}', instructions = '${escapedInstructions}', content = '${contentJson}'::jsonb, source = 'local', updated_at = NOW() WHERE name = '${skill.name}'`;
+      } else {
+        sql = `INSERT INTO skills (id, name, description, instructions, content, source) VALUES (gen_random_uuid(), '${skill.name}', '${escapedDesc}', '${escapedInstructions}', '${contentJson}'::jsonb, 'local')`;
+      }
+      
+      const tmpFile = join(homedir(), ".traenupi-sync-skill.sql");
+      writeFileSync(tmpFile, sql);
+      
+      try {
+        execSync(`psql -h localhost -U postgres -d ${getDbName()} -f ${tmpFile}`, { encoding: "utf-8" });
+        results.push({
+          name: skill.name,
+          success: true,
+        });
+      } catch (error) {
+        results.push({
+          name: skill.name,
+          success: false,
+          error: `Failed to sync to database: ${error}`,
+        });
+      } finally {
+        if (existsSync(tmpFile)) {
+          unlinkSync(tmpFile);
+        }
+      }
+    } catch (error) {
+      results.push({
+        name: skillDir,
+        success: false,
+        error: `Failed to process skill: ${error}`,
+      });
+    }
+  }
+  
+  return results;
 }

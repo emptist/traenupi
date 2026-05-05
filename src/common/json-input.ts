@@ -18,6 +18,21 @@ export interface JsonMeetingOpinion {
   reasoning?: string;
 }
 
+export interface JsonReflectionInput {
+  summary: string;
+  taskId?: string;
+  reflectionType?: string;
+  learnings?: Array<{topic: string; reminder: string}>;
+  issues?: Array<{severity: string; location: string; description: string}>;
+  suggestions?: Array<{priority: number; area: string; description: string}>;
+  praise?: Array<{area: string; description: string}>;
+  overallScore?: number;
+  codeQualityScore?: number;
+  testCoverageScore?: number;
+  documentationScore?: number;
+  sentiment?: "positive" | "negative" | "neutral" | "mixed";
+}
+
 export async function readStdinJson(): Promise<string> {
   return new Promise((resolve, reject) => {
     const rl = createInterface({
@@ -96,6 +111,43 @@ export function parseJsonMeetingOpinion(input: string): JsonMeetingOpinion {
     }
     
     return parsed as JsonMeetingOpinion;
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`Invalid JSON: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+export function parseJsonReflection(input: string): JsonReflectionInput {
+  try {
+    const parsed = JSON.parse(input);
+    
+    if (!parsed.summary || typeof parsed.summary !== "string") {
+      throw new Error("Missing or invalid 'summary' field");
+    }
+    
+    if (parsed.overallScore && (typeof parsed.overallScore !== "number" || parsed.overallScore < 0 || parsed.overallScore > 100)) {
+      throw new Error("'overallScore' must be a number between 0 and 100");
+    }
+    
+    if (parsed.learnings && !Array.isArray(parsed.learnings)) {
+      throw new Error("'learnings' must be an array");
+    }
+    
+    if (parsed.issues && !Array.isArray(parsed.issues)) {
+      throw new Error("'issues' must be an array");
+    }
+    
+    if (parsed.suggestions && !Array.isArray(parsed.suggestions)) {
+      throw new Error("'suggestions' must be an array");
+    }
+    
+    if (parsed.praise && !Array.isArray(parsed.praise)) {
+      throw new Error("'praise' must be an array");
+    }
+    
+    return parsed as JsonReflectionInput;
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Invalid JSON: ${error.message}`);

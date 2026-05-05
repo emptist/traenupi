@@ -491,9 +491,88 @@ async function main(): Promise<void> {
     }
     
     if (subCommand === "add") {
-      const summary = args.slice(2).join(" ");
+      const rest = args.slice(2);
+      const useJson = rest.includes("--json") || rest.includes("-j");
+      
+      if (useJson) {
+        try {
+          const { readStdinJson, parseJsonReflection } = await import("./common/json-input.js");
+          const jsonInput = await readStdinJson();
+          
+          if (!jsonInput.trim()) {
+            console.log("[ERROR] No JSON input received from stdin");
+            return;
+          }
+          
+          const reflectionData = parseJsonReflection(jsonInput);
+          const agentId = getAgentId();
+          
+          let reflection = createReflection(
+            reflectionData.summary, 
+            agentId, 
+            {
+              taskId: reflectionData.taskId,
+              type: reflectionData.reflectionType
+            }
+          );
+          
+          if (reflectionData.learnings) {
+            for (const learning of reflectionData.learnings) {
+              reflection = addLearning(reflection, learning.topic, learning.reminder);
+            }
+          }
+          
+          if (reflectionData.issues) {
+            for (const issue of reflectionData.issues) {
+              const severity = issue.severity as "critical" | "high" | "medium" | "low";
+              reflection = addIssue(reflection, severity, issue.location, issue.description);
+            }
+          }
+          
+          if (reflectionData.suggestions) {
+            for (const suggestion of reflectionData.suggestions) {
+              reflection = addSuggestion(reflection, suggestion.priority, suggestion.area, suggestion.description);
+            }
+          }
+          
+          if (reflectionData.praise) {
+            for (const p of reflectionData.praise) {
+              reflection = addPraise(reflection, p.area, p.description);
+            }
+          }
+          
+          if (reflectionData.overallScore && reflectionData.codeQualityScore && reflectionData.testCoverageScore && reflectionData.documentationScore) {
+            const result = setScores(
+              reflection, 
+              reflectionData.overallScore, 
+              reflectionData.codeQualityScore, 
+              reflectionData.testCoverageScore, 
+              reflectionData.documentationScore
+            );
+            if (result) reflection = result;
+          }
+          
+          if (reflectionData.sentiment) {
+            reflection = setSentiment(reflection, reflectionData.sentiment);
+          }
+          
+          console.log(`[TRAENUPI] Created reflection: ${reflection.id}`);
+          console.log(`  Summary: ${reflection.summary}`);
+          console.log(`  Agent: ${reflection.agentId}`);
+          if (reflectionData.learnings) console.log(`  Learnings: ${reflectionData.learnings.length}`);
+          if (reflectionData.issues) console.log(`  Issues: ${reflectionData.issues.length}`);
+          if (reflectionData.suggestions) console.log(`  Suggestions: ${reflectionData.suggestions.length}`);
+          if (reflectionData.praise) console.log(`  Praise: ${reflectionData.praise.length}`);
+        } catch (error) {
+          console.log(`[ERROR] ${error instanceof Error ? error.message : String(error)}`);
+        }
+        return;
+      }
+      
+      const summary = rest.join(" ");
       if (!summary) {
         console.log("[ERROR] Usage: traenupi reflect add <summary>");
+        console.log("               traenupi reflect add --json (reads from stdin)");
         return;
       }
       

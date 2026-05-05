@@ -5,21 +5,51 @@ import { loadHistory, saveHistory, ensureDir } from "../common/storage.js";
 import { buildContext, buildQuickContext, PI_SESSION_DIR, PI_FLAGS } from "./context.js";
 import { PiAgent, createPiAgentSession, type PiAgentConfig, type PiAgentMessage } from "./pi-agent-bridge.js";
 
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "";
-const PI_AGENT_SYSTEM_PROMPT = process.env.PI_AGENT_SYSTEM_PROMPT || "You are a helpful AI assistant integrated with TraeNuPI.";
+export interface BabyAiConfig {
+  apiKey?: string;
+  model?: string;
+  systemPrompt?: string;
+  maxRetries?: number;
+  baseDelayMs?: number;
+  timeout?: number;
+  enableLogging?: boolean;
+}
+
+const DEFAULT_CONFIG: Required<BabyAiConfig> = {
+  apiKey: process.env.OPENROUTER_API_KEY || "",
+  model: "tencent/hy3-preview:free",
+  systemPrompt: process.env.PI_AGENT_SYSTEM_PROMPT || "You are a helpful AI assistant integrated with TraeNuPI.",
+  maxRetries: 3,
+  baseDelayMs: 2000,
+  timeout: 120000,
+  enableLogging: true,
+};
 
 let piAgentInstance: PiAgent | null = null;
+let config: Required<BabyAiConfig> = { ...DEFAULT_CONFIG };
+
+export function configureBabyAi(newConfig: Partial<BabyAiConfig>): void {
+  config = { ...config, ...newConfig };
+  piAgentInstance = null;
+}
+
+function log(message: string): void {
+  if (config.enableLogging) {
+    console.log(message);
+  }
+}
 
 function getPiAgent(): PiAgent {
   if (!piAgentInstance) {
-    if (!OPENROUTER_API_KEY) {
+    if (!config.apiKey) {
       throw new Error("OPENROUTER_API_KEY environment variable is required for PI Agent");
     }
     piAgentInstance = createPiAgentSession({
-      apiKey: OPENROUTER_API_KEY,
-      model: "tencent/hy3-preview:free",
-      systemPrompt: PI_AGENT_SYSTEM_PROMPT,
+      apiKey: config.apiKey,
+      model: config.model,
+      systemPrompt: config.systemPrompt,
     });
+    log(`[BabyAI] PI Agent initialized with model: ${config.model}`);
   }
   return piAgentInstance;
 }
@@ -30,6 +60,7 @@ export async function askPiAsync(
   quick: boolean = false,
   onChunk?: (chunk: string) => void
 ): Promise<string> {
+  const startTime = Date.now();
   try {
     const agent = getPiAgent();
     const context = quick ? buildQuickContext(history, question) : buildContext(history, question);
@@ -39,10 +70,16 @@ export async function askPiAsync(
       { role: "user", content: question },
     ];
 
+    log(`[BabyAI] Sending request to PI Agent (quick: ${quick})`);
     const response = await agent.run(messages, onChunk);
+    const elapsed = Date.now() - startTime;
+    log(`[BabyAI] Response received in ${elapsed}ms`);
+    
     return response.content || "[Pi returned empty response]";
   } catch (e) {
+    const elapsed = Date.now() - startTime;
     const msg = e instanceof Error ? e.message : String(e);
+    log(`[BabyAI] Error after ${elapsed}ms: ${msg}`);
     return `[Error calling Pi Agent: ${msg}]`;
   }
 }

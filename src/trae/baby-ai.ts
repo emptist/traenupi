@@ -4,6 +4,7 @@ import type { ConversationItem } from "../common/types.js";
 import { loadHistory, saveHistory, ensureDir } from "../common/storage.js";
 import { buildContext, buildQuickContext, PI_SESSION_DIR, PI_FLAGS } from "./context.js";
 import { PiAgent, createPiAgentSession, type PiAgentConfig, type PiAgentMessage } from "./pi-agent-bridge.js";
+import { BabyAiCache, PerformanceTracker, RateLimiter, formatMetrics } from "./baby-ai-utils.js";
 
 export interface BabyAiConfig {
   apiKey?: string;
@@ -13,6 +14,12 @@ export interface BabyAiConfig {
   baseDelayMs?: number;
   timeout?: number;
   enableLogging?: boolean;
+  enableCache?: boolean;
+  cacheMaxSize?: number;
+  cacheTtl?: number;
+  enableRateLimit?: boolean;
+  rateLimitMaxRequests?: number;
+  rateLimitWindowMs?: number;
 }
 
 const DEFAULT_CONFIG: Required<BabyAiConfig> = {
@@ -23,20 +30,79 @@ const DEFAULT_CONFIG: Required<BabyAiConfig> = {
   baseDelayMs: 2000,
   timeout: 120000,
   enableLogging: true,
+  enableCache: true,
+  cacheMaxSize: 100,
+  cacheTtl: 3600000,
+  enableRateLimit: true,
+  rateLimitMaxRequests: 60,
+  rateLimitWindowMs: 60000,
 };
 
 let piAgentInstance: PiAgent | null = null;
 let config: Required<BabyAiConfig> = { ...DEFAULT_CONFIG };
+let cache: BabyAiCache | null = null;
+let tracker: PerformanceTracker | null = null;
+let limiter: RateLimiter | null = null;
 
 export function configureBabyAi(newConfig: Partial<BabyAiConfig>): void {
   config = { ...config, ...newConfig };
   piAgentInstance = null;
+  cache = null;
+  tracker = null;
+  limiter = null;
+}
+
+export function getPerformanceMetrics() {
+  return tracker ? tracker.getMetrics() : null;
+}
+
+export function printPerformanceMetrics(): void {
+  const metrics = getPerformanceMetrics();
+  if (metrics) {
+    console.log(formatMetrics(metrics));
+  } else {
+    console.log("[BabyAI] Performance tracking not enabled");
+  }
+}
+
+export function clearCache(): void {
+  if (cache) {
+    cache.clear();
+    log("[BabyAI] Cache cleared");
+  }
 }
 
 function log(message: string): void {
   if (config.enableLogging) {
     console.log(message);
   }
+}
+
+function getCache(): BabyAiCache {
+  if (!cache) {
+    cache = new BabyAiCache(config.cacheMaxSize, config.cacheTtl);
+    log(`[BabyAI] Cache initialized (max: ${config.cacheMaxSize}, ttl: ${config.cacheTtl}ms)`);
+  }
+  return cache;
+}
+
+function getTracker(): PerformanceTracker {
+  if (!tracker) {
+    tracker = new PerformanceTracker();
+    log("[BabyAI] Performance tracker initialized");
+  }
+  return tracker;
+}
+
+function getLimiter(): RateLimiter {
+  if (!limiter) {
+    limiter = new RateLimiter({
+      maxRequests: config.rateLimitMaxRequests,
+      windowMs: config.rateLimitWindowMs,
+    });
+    log(`[BabyAI] Rate limiter initialized (${config.rateLimitMaxRequests} requests per ${config.rateLimitWindowMs}ms)`);
+  }
+  return limiter;
 }
 
 function getPiAgent(): PiAgent {
@@ -61,6 +127,28 @@ export async function askPiAsync(
   onChunk?: (chunk: string) => void
 ): Promise<string> {
   const startTime = Date.now();
+  const perfTracker = config.enableCache || config.enableRateLimit ? getTracker() : null;
+  
+  if (config.enableRateLimit) {
+    const rateLimiter = getLimiter();
+    if (!rateLimiter.canMakeRequest()) {
+      const waitTime = rateLimiter.getTimeUntilNextRequest();
+      log(`[BabyAI] Rate limit reached, waiting ${waitTime}ms`);
+      await sleepAsync(waitTime);
+    }
+  }
+
+  if (config.enableCache) {
+    const cacheInstance = getCache();
+    const cached = cacheInstance.get(question);
+    if (cached) {
+      perfTracker?.recordCacheHit();
+      log("[BabyAI] Cache hit");
+      return cached;
+    }
+    perfTracker?.recordCacheMiss();
+  }
+
   try {
     const agent = getPiAgent();
     const context = quick ? buildQuickContext(history, question) : buildContext(history, question);
@@ -73,13 +161,25 @@ export async function askPiAsync(
     log(`[BabyAI] Sending request to PI Agent (quick: ${quick})`);
     const response = await agent.run(messages, onChunk);
     const elapsed = Date.now() - startTime;
+    
+    perfTracker?.recordRequest(true, elapsed);
     log(`[BabyAI] Response received in ${elapsed}ms`);
     
-    return response.content || "[Pi returned empty response]";
+    const content = response.content || "[Pi returned empty response]";
+    
+    if (config.enableCache && !content.startsWith("[Error")) {
+      getCache().set(question, content);
+      log("[BabyAI] Response cached");
+    }
+    
+    return content;
   } catch (e) {
     const elapsed = Date.now() - startTime;
     const msg = e instanceof Error ? e.message : String(e);
+    
+    perfTracker?.recordRequest(false, elapsed);
     log(`[BabyAI] Error after ${elapsed}ms: ${msg}`);
+    
     return `[Error calling Pi Agent: ${msg}]`;
   }
 }

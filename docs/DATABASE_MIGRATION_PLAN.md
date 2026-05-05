@@ -77,11 +77,12 @@ Migrate TraeNuPI from `nezha` database to `psypi` database to make TraeNuPI self
 - [ ] Test inter-reviews
 - [ ] Test reflections
 
-### Phase 4: Data Migration (IF NEEDED)
-- [ ] Check if there's data in nezha database that needs to be migrated
-- [ ] Create data migration scripts if needed
-- [ ] Test data migration on a copy first
-- [ ] Perform actual data migration
+### Phase 4: Clean Start (SIMPLIFIED)
+- [x] Decision: Start fresh in psypi database
+- [ ] Identify traenupi-specific data that must be migrated (if any)
+- [ ] Create migration scripts for essential data only
+- [ ] Most data will remain in nezha as historical record
+- [ ] TraeNuPI will start with clean slate in psypi
 
 ### Phase 5: Deployment
 - [ ] Update documentation
@@ -144,10 +145,13 @@ Some tables in psypi have row-level security policies:
 
 ### Decision 2: Should we migrate existing data?
 - **Option A**: Migrate all data from nezha to psypi
-- **Option B**: Start fresh in psypi
+- **Option B**: Start fresh in psypi ✅ **SELECTED**
 - **Option C**: Keep historical data in nezha, new data in psypi
 
-**Recommendation**: Option A - Migrate all data to make TraeNuPI fully self-contained
+**Decision**: Option B - Clean new start for TraeNuPI
+- Leave outdated data in nezha database
+- Only migrate traenupi-specific data if needed
+- Start fresh with clean, relevant data
 
 ## Next Steps
 
@@ -171,5 +175,11 @@ The migration is **technically feasible** and **safe** because:
 - All required tables exist in psypi
 - Table structures are compatible
 - No schema changes are needed
+- **Clean start approach minimizes risk**
 
-However, we should **coordinate with psypi team** before proceeding to ensure we don't interfere with psypi's operations.
+**Migration Strategy**: Clean new start
+- Leave outdated data in nezha database
+- Start fresh in psypi with only essential data
+- Simpler, safer, and cleaner approach
+
+**Next Action**: Coordinate with psypi team to proceed with the migration.

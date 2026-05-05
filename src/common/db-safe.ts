@@ -13,7 +13,7 @@ let pool: Pool | null = null;
 let dbConfig: DbConfig = {
   host: "localhost",
   user: "postgres",
-  database: "nezha",
+  database: "psypi",
   port: 5432,
 };
 

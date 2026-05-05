@@ -12,7 +12,7 @@ export interface DbConfig {
 let dbConfig: DbConfig = {
   host: "localhost",
   user: "postgres",
-  database: "nezha",
+  database: "psypi",
 };
 
 export function setDbConfig(config: Partial<DbConfig>): void {

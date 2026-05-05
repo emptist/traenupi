@@ -330,3 +330,112 @@ For TraeNuPI to properly use pi's skills:
 - **Progressive disclosure**: Only load what's needed
 - **Standard compliance**: Agent Skills standard for interoperability
 - **Better performance**: Pi's native system is optimized
+
+## Database Safety
+
+### ⚠️ CRITICAL: psypi is a Shared Database ⚠️
+
+The `psypi` database is shared by multiple AI agents and projects. **You MUST follow these safety rules:**
+
+1. **NEVER modify the database schema**
+   - No CREATE TABLE, ALTER TABLE, or DROP TABLE
+   - No adding/removing columns
+   - No changing constraints or indexes
+
+2. **NEVER delete data**
+   - No DELETE statements
+   - No TRUNCATE statements
+   - No DROP statements
+
+3. **ONLY INSERT or UPDATE**
+   - Add new skills with INSERT
+   - Update existing skills with UPDATE
+   - Always check for existing records first
+
+4. **Backup before any changes**
+   - Create a backup before making any modifications
+   - Use official PostgreSQL backup tools
+   - Verify backup integrity before proceeding
+
+### Database Backup Procedure
+
+**Before making ANY changes to psypi database:**
+
+```bash
+# 1. Create backup directory
+mkdir -p ~/backups
+
+# 2. Create custom format backup (recommended)
+/Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump \
+  -h localhost -U postgres -d psypi \
+  -F c -f ~/backups/psypi_backup_$(date +%Y%m%d_%H%M%S).backup
+
+# 3. Create SQL format backup (for verification)
+/Applications/Postgres.app/Contents/Versions/latest/bin/pg_dump \
+  -h localhost -U postgres -d psypi \
+  -F p -f ~/backups/psypi_backup_$(date +%Y%m%d_%H%M%S).sql
+
+# 4. Verify backup integrity
+ls -lh ~/backups/psypi_backup_*
+shasum -a 256 ~/backups/psypi_backup_*
+```
+
+**Backup verification checklist:**
+- [ ] Backup files exist and have reasonable size
+- [ ] SHA256 checksums are recorded
+- [ ] SQL backup contains expected table counts
+- [ ] Custom backup can be restored to test database
+
+### Database Configuration
+
+TraeNuPI uses the database configured in `src/common/db.ts`:
+
+```typescript
+let dbConfig: DbConfig = {
+  host: "localhost",
+  user: "postgres",
+  database: "psypi",  // Shared database - BE CAREFUL!
+};
+```
+
+**Important:** All database operations should use `getDbConfig()` to get the configured database name, not hardcoded values.
+
+### Skill Sync Safety
+
+When syncing skills between file system and database:
+
+1. **File system → Database (`--to-db`)**
+   - Checks for existing skills by name
+   - Uses UPDATE if skill exists
+   - Uses INSERT if skill is new
+   - Sets `source = 'local'` for file system skills
+
+2. **Database → File system (`--to-files`)**
+   - Creates skill directories in `~/.pi/agent/skills/`
+   - Writes SKILL.md files
+   - Does NOT delete existing skills
+
+3. **Bidirectional sync (no arguments)**
+   - Syncs both directions
+   - File system → Database first
+   - Database → File system second
+   - No data loss on either side
+
+### Recovery Procedure
+
+If database is damaged:
+
+```bash
+# 1. Stop all applications using the database
+
+# 2. Restore from backup
+/Applications/Postgres.app/Contents/Versions/latest/bin/pg_restore \
+  -h localhost -U postgres -d psypi_restored \
+  ~/backups/psypi_backup_YYYYMMDD_HHMMSS.backup
+
+# 3. Verify restored database
+psql -h localhost -U postgres -d psypi_restored -c "SELECT COUNT(*) FROM skills;"
+
+# 4. If verified, switch to restored database
+# (Coordinate with other AIs before doing this!)
+```

@@ -97,18 +97,26 @@ export function loadKnowledgeLocal(): KnowledgeEntry[] {
   return entries;
 }
 
-export function addKnowledge(key: string, value: string, category: string): void {
+export function addKnowledge(
+  key: string, 
+  value: string, 
+  category: string,
+  customTags?: string[],
+  importance?: number
+): void {
   const content = `${key}: ${value}`;
-  const tags = `{${knowledgeConfig.source},${category}}`;
+  const tagsArray = customTags || [knowledgeConfig.source || "traenupi", category];
+  const tags = `{${tagsArray.join(",")}}`;
 
   const gleamEntry = new_entry(key, value, category);
-  const gleamEntryWithTags = with_tags(gleamEntry, toList([knowledgeConfig.source || "traenupi", category]));
+  const gleamEntryWithTags = with_tags(gleamEntry, toList(tagsArray));
   knowledgeGraph = add_entry(knowledgeGraph, gleamEntryWithTags);
 
   if (knowledgeConfig.useDatabase) {
     try {
+      const importanceValue = importance || 5;
       psqlExec(
-        `INSERT INTO memory (content, source, tags) VALUES ('${content.replace(/'/g, "''")}', '${knowledgeConfig.source}', '${tags}');`
+        `INSERT INTO memory (content, source, tags, importance) VALUES ('${content.replace(/'/g, "''")}', '${knowledgeConfig.source}', '${tags}', ${importanceValue});`
       );
       return;
     } catch {}

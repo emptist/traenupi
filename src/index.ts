@@ -351,6 +351,7 @@ async function main(): Promise<void> {
       if (knowledge.length === 0) {
         console.log("[TRAENUPI] No knowledge stored yet.");
         console.log("Usage: traenupi know <category>:<key> <value>");
+        console.log("       traenupi know --json (reads from stdin)");
         return;
       }
       console.log("[TRAENUPI] Knowledge Store (Local)\n");
@@ -369,6 +370,37 @@ async function main(): Promise<void> {
     }
     
     const firstArg = rest[0];
+    
+    if (firstArg === "--json" || firstArg === "-j") {
+      try {
+        const { readStdinJson, parseJsonKnowledge, validateJsonKnowledge } = await import("./common/json-input.js");
+        const jsonInput = await readStdinJson();
+        
+        if (!jsonInput.trim()) {
+          console.log("[ERROR] No JSON input received from stdin");
+          return;
+        }
+        
+        const parsed = parseJsonKnowledge(jsonInput);
+        
+        if ("entries" in parsed) {
+          console.log(`[TRAENUPI] Processing ${parsed.entries.length} knowledge entries...`);
+          for (const entry of parsed.entries) {
+            validateJsonKnowledge(entry);
+            addKnowledge(entry.key, entry.value, entry.category, entry.tags, entry.importance);
+            console.log(`  ✓ [${entry.category}] ${entry.key}`);
+          }
+          console.log(`[TRAENUPI] Stored ${parsed.entries.length} knowledge entries`);
+        } else {
+          validateJsonKnowledge(parsed);
+          addKnowledge(parsed.key, parsed.value, parsed.category, parsed.tags, parsed.importance);
+          console.log(`[TRAENUPI] Stored in Nezha DB: [${parsed.category}] ${parsed.key}`);
+        }
+      } catch (error) {
+        console.log(`[ERROR] ${error instanceof Error ? error.message : String(error)}`);
+      }
+      return;
+    }
     
     if (firstArg === "--recent" || firstArg === "-r") {
       const limit = parseInt(rest[1], 10) || 10;

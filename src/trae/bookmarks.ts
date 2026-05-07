@@ -1,10 +1,11 @@
 import type { Bookmark } from "../common/types.js";
 import { loadBookmarks, saveBookmarks, ensureDir } from "../common/storage.js";
-import { psqlQuery, resolveMeetingId } from "../common/db.js";
+import { resolveMeetingId } from "../common/db.js";
+import { querySafeText } from "../common/db-safe.js";
 
-export function addBookmark(meetingId: string, opinionId: string | undefined, note: string): void {
+export async function addBookmark(meetingId: string, opinionId: string | undefined, note: string): Promise<void> {
   ensureDir();
-  const resolvedId = resolveMeetingId(meetingId);
+  const resolvedId = await resolveMeetingId(meetingId);
   if (!resolvedId) {
     console.log("[TRAENUPI] Meeting not found.");
     return;
@@ -13,10 +14,10 @@ export function addBookmark(meetingId: string, opinionId: string | undefined, no
   let opinionData = { author: "", perspective: "" };
   if (opinionId) {
     try {
-      const output = psqlQuery(`
-        SELECT author, perspective FROM meeting_opinions
-        WHERE id = '${opinionId}' AND meeting_id = '${resolvedId}';
-      `);
+      const output = await querySafeText(
+        `SELECT author, perspective FROM meeting_opinions WHERE id = $1 AND meeting_id = $2;`,
+        [opinionId, resolvedId]
+      );
       if (output) {
         const parts = output.split("|");
         opinionData = { author: parts[0] || "", perspective: parts[1] || "" };
@@ -24,12 +25,10 @@ export function addBookmark(meetingId: string, opinionId: string | undefined, no
     } catch {}
   } else {
     try {
-      const output = psqlQuery(`
-        SELECT id, author, perspective FROM meeting_opinions
-        WHERE meeting_id = '${resolvedId}'
-        ORDER BY created_at DESC
-        LIMIT 1;
-      `);
+      const output = await querySafeText(
+        `SELECT id, author, perspective FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at DESC LIMIT 1;`,
+        [resolvedId]
+      );
       if (output) {
         const parts = output.split("|");
         opinionId = parts[0];

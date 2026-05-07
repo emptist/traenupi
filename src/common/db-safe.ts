@@ -114,3 +114,23 @@ export function escapeIdentifier(identifier: string): string {
   }
   return `"${identifier}"`;
 }
+
+export async function querySafeText(
+  sql: string,
+  params: any[] = [],
+  options?: DbQueryOptions
+): Promise<string> {
+  try {
+    const result = await getPool().query(sql, params);
+    if (result.rows.length === 0) return "";
+    return result.rows
+      .map(row => Object.values(row).join("|"))
+      .join("\n")
+      .trim();
+  } catch (e) {
+    if (!options?.silent) {
+      console.error(`[DB Error] ${e instanceof Error ? e.message : String(e)}`);
+    }
+    return "";
+  }
+}

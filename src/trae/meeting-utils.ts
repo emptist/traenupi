@@ -1,18 +1,19 @@
-import { psqlQuery, psqlExec, resolveMeetingId } from "../common/db.js";
-import { getAgentId } from "../common/db.js";
+import { querySafeText, execSafe } from "../common/db-safe.js";
+import { resolveMeetingId, getAgentId } from "../common/db.js";
 
-export function crossMeetingSearch(term: string): void {
+export async function crossMeetingSearch(term: string): Promise<void> {
   console.log(`🔍 Searching for "${term}" across all meetings...\n`);
 
   try {
-    const output = psqlQuery(`
-      SELECT m.id, m.topic, o.author, o.perspective, o.created_at
-      FROM meetings m
-      JOIN meeting_opinions o ON m.id = o.meeting_id
-      WHERE o.perspective ILIKE '%${term}%'
-      ORDER BY o.created_at DESC
-      LIMIT 30;
-    `);
+    const output = await querySafeText(
+      `SELECT m.id, m.topic, o.author, o.perspective, o.created_at
+       FROM meetings m
+       JOIN meeting_opinions o ON m.id = o.meeting_id
+       WHERE o.perspective ILIKE $1
+       ORDER BY o.created_at DESC
+       LIMIT 30`,
+      [`%${term}%`]
+    );
 
     if (!output.trim()) {
       console.log("No results found.");
@@ -53,24 +54,29 @@ export function crossMeetingSearch(term: string): void {
   }
 }
 
-export function recommendMeetings(meetingId: string): void {
-  const resolvedId = resolveMeetingId(meetingId);
+export async function recommendMeetings(meetingId: string): Promise<void> {
+  const resolvedId = await resolveMeetingId(meetingId);
   if (!resolvedId) {
     console.log("Meeting not found.");
     return;
   }
 
   try {
+    const currentPerspectives = await querySafeText(
+      `SELECT perspective FROM meeting_opinions WHERE meeting_id = $1;`,
+      [resolvedId]
+    );
     const currentKeywords = new Set(
-      psqlQuery(`SELECT perspective FROM meeting_opinions WHERE meeting_id = '${resolvedId}';`)
+      currentPerspectives
         .toLowerCase()
         .split(/\s+/)
         .filter(w => w.length > 4)
     );
 
-    const allMeetings = psqlQuery(`
-      SELECT id, topic FROM meetings WHERE id != '${resolvedId}' AND status = 'active';
-    `);
+    const allMeetings = await querySafeText(
+      `SELECT id, topic FROM meetings WHERE id != $1 AND status = 'active';`,
+      [resolvedId]
+    );
 
     if (!allMeetings.trim()) {
       console.log("No other meetings to compare.");
@@ -85,8 +91,12 @@ export function recommendMeetings(meetingId: string): void {
       const topic = parts[1];
 
       if (id && topic) {
+        const otherPerspectives = await querySafeText(
+          `SELECT perspective FROM meeting_opinions WHERE meeting_id = $1;`,
+          [id]
+        );
         const otherKeywords = new Set(
-          psqlQuery(`SELECT perspective FROM meeting_opinions WHERE meeting_id = '${id}';`)
+          otherPerspectives
             .toLowerCase()
             .split(/\s+/)
             .filter(w => w.length > 4)
@@ -120,19 +130,20 @@ export function recommendMeetings(meetingId: string): void {
   }
 }
 
-export function autoSummarizeMeeting(meetingId: string): void {
+export async function autoSummarizeMeeting(meetingId: string): Promise<void> {
   console.log("╔════════════════════════════════════════════╗");
   console.log("║     Auto Meeting Summary                   ║");
   console.log("╚════════════════════════════════════════════╝\n");
 
   try {
-    const topic = psqlQuery(`SELECT topic FROM meetings WHERE id = '${meetingId}';`).trim();
-    const opinions = psqlQuery(`
-      SELECT author, perspective, position
-      FROM meeting_opinions
-      WHERE meeting_id = '${meetingId}'
-      ORDER BY created_at;
-    `).trim();
+    const topic = (await querySafeText(`SELECT topic FROM meetings WHERE id = $1;`, [meetingId])).trim();
+    const opinions = (await querySafeText(
+      `SELECT author, perspective, position
+       FROM meeting_opinions
+       WHERE meeting_id = $1
+       ORDER BY created_at;`,
+      [meetingId]
+    )).trim();
 
     if (!opinions) {
       console.log("No opinions to summarize.");
@@ -197,19 +208,19 @@ export function autoSummarizeMeeting(meetingId: string): void {
   }
 }
 
-export function showAllAIs(): void {
+export async function showAllAIs(): Promise<void> {
   console.log("╔════════════════════════════════════════════╗");
   console.log("║     All AI Agents                          ║");
   console.log("╚════════════════════════════════════════════╝\n");
 
   try {
-    const output = psqlQuery(`
-      SELECT DISTINCT author, COUNT(*) as opinions, MAX(created_at) as last_active
-      FROM meeting_opinions
-      GROUP BY author
-      ORDER BY opinions DESC
-      LIMIT 20;
-    `);
+    const output = await querySafeText(
+      `SELECT DISTINCT author, COUNT(*) as opinions, MAX(created_at) as last_active
+       FROM meeting_opinions
+       GROUP BY author
+       ORDER BY opinions DESC
+       LIMIT 20;`
+    );
 
     if (!output.trim()) {
       console.log("  No AI agents found.\n");
@@ -284,7 +295,7 @@ export function showMeetingTemplates(): void {
   console.log("Usage: traenupi meeting create <topic> --template <name>");
 }
 
-export function createMeetingFromTemplate(topic: string, templateName: string): void {
+export async function createMeetingFromTemplate(topic: string, templateName: string): Promise<void> {
   const templates: { [key: string]: string[] } = {
     brainstorm: ["Problem Statement", "Ideas Generation", "Discussion", "Action Items"],
     decision: ["Context", "Options", "Pros/Cons", "Vote", "Decision"],
@@ -301,7 +312,10 @@ export function createMeetingFromTemplate(topic: string, templateName: string): 
   }
   
   try {
-    const meetingId = psqlQuery(`INSERT INTO meetings (topic, status, created_by) VALUES ('${topic}', 'active', 'traenupi') RETURNING id;`).trim();
+    const meetingId = (await querySafeText(
+      `INSERT INTO meetings (topic, status, created_by) VALUES ($1, 'active', 'traenupi') RETURNING id;`,
+      [topic]
+    )).trim();
     
     console.log(`[TRAENUPI] Meeting created from template!`);
     console.log(`   ID: ${meetingId}`);

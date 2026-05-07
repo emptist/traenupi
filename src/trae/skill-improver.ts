@@ -1,4 +1,4 @@
-import { psqlQuery, psqlExec } from "../common/db.js";
+import { querySafeText, execSafe } from "../common/db-safe.js";
 
 export interface SkillRecord {
   id: string;
@@ -144,9 +144,10 @@ export function generateTriggerPhrases(skill: SkillRecord): string[] {
   return [...new Set(allPhrases)];
 }
 
-export function scanSkills(projectId: string = "traenupi"): SkillScanResult[] {
-  const output = psqlQuery(
-    `SELECT id, name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE project_id = '${projectId}' ORDER BY name;`,
+export async function scanSkills(projectId: string = "traenupi"): Promise<SkillScanResult[]> {
+  const output = await querySafeText(
+    "SELECT id, name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE project_id = $1 ORDER BY name",
+    [projectId],
     { silent: true }
   );
 
@@ -197,9 +198,10 @@ export function scanSkills(projectId: string = "traenupi"): SkillScanResult[] {
   return results;
 }
 
-export function autoImproveTriggerPhrases(skillId: string): boolean {
-  const output = psqlQuery(
-    `SELECT name, description, trigger_phrases, tags FROM skills WHERE id = '${skillId}';`,
+export async function autoImproveTriggerPhrases(skillId: string): Promise<boolean> {
+  const output = await querySafeText(
+    "SELECT name, description, trigger_phrases, tags FROM skills WHERE id = $1",
+    [skillId],
     { silent: true }
   );
 
@@ -217,15 +219,17 @@ export function autoImproveTriggerPhrases(skillId: string): boolean {
   if (phrases.length === 0) return false;
 
   const phrasesSql = `{${phrases.map(p => `"${p}"`).join(",")}}`;
-  return psqlExec(
-    `UPDATE skills SET trigger_phrases = '${phrasesSql}' WHERE id = '${skillId}';`,
+  return execSafe(
+    "UPDATE skills SET trigger_phrases = $1 WHERE id = $2",
+    [phrasesSql, skillId],
     { silent: true }
   );
 }
 
-export function autoImproveDescription(skillId: string, description: string): boolean {
-  return psqlExec(
-    `UPDATE skills SET description = '${description.replace(/'/g, "''")}' WHERE id = '${skillId}';`,
+export async function autoImproveDescription(skillId: string, description: string): Promise<boolean> {
+  return execSafe(
+    "UPDATE skills SET description = $1 WHERE id = $2",
+    [description, skillId],
     { silent: true }
   );
 }
@@ -325,34 +329,37 @@ export function parseSkillImprovementResponse(response: string): SkillImprovemen
   return result;
 }
 
-export function applySkillImprovement(skillId: string, improvement: SkillImprovementResult): boolean {
+export async function applySkillImprovement(skillId: string, improvement: SkillImprovementResult): Promise<boolean> {
   let anyApplied = false;
 
   if (improvement.description) {
-    const ok = autoImproveDescription(skillId, improvement.description);
+    const ok = await autoImproveDescription(skillId, improvement.description);
     if (ok) anyApplied = true;
   }
 
   if (improvement.instructions) {
-    const ok = psqlExec(
-      `UPDATE skills SET instructions = '${improvement.instructions.replace(/'/g, "''")}' WHERE id = '${skillId}';`,
+    const ok = await execSafe(
+      "UPDATE skills SET instructions = $1 WHERE id = $2",
+      [improvement.instructions, skillId],
       { silent: true }
     );
     if (ok) anyApplied = true;
   }
 
   if (improvement.quick_start) {
-    const ok = psqlExec(
-      `UPDATE skills SET quick_start = '${improvement.quick_start.replace(/'/g, "''")}' WHERE id = '${skillId}';`,
+    const ok = await execSafe(
+      "UPDATE skills SET quick_start = $1 WHERE id = $2",
+      [improvement.quick_start, skillId],
       { silent: true }
     );
     if (ok) anyApplied = true;
   }
 
   if (improvement.examples && improvement.examples.length > 0) {
-    const examplesSql = `{${improvement.examples.map(e => `"${e.replace(/"/g, '\\"').replace(/'/g, "''")}"`).join(",")}}`;
-    const ok = psqlExec(
-      `UPDATE skills SET examples = '${examplesSql}' WHERE id = '${skillId}';`,
+    const examplesSql = `{${improvement.examples.map(e => `"${e.replace(/"/g, '\\"')}"`).join(",")}}`;
+    const ok = await execSafe(
+      "UPDATE skills SET examples = $1 WHERE id = $2",
+      [examplesSql, skillId],
       { silent: true }
     );
     if (ok) anyApplied = true;

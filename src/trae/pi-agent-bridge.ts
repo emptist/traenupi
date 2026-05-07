@@ -90,9 +90,9 @@ export function createPiAgentSession(config: PiAgentConfig): PiAgent {
   return new PiAgent(config);
 }
 
-export function askPi(question: string, history: ConversationItem[], quick: boolean = false, useSession: boolean = false): string {
+export async function askPi(question: string, history: ConversationItem[], quick: boolean = false, useSession: boolean = false): Promise<string> {
   try {
-    const context = quick ? buildQuickContext(history, question) : buildContext(history, question);
+    const context = quick ? await buildQuickContext(history, question) : await buildContext(history, question);
     const fullPrompt = `${context}\n\nQuestion: ${question}`;
 
     const args = [...PI_FLAGS];
@@ -154,7 +154,7 @@ export function webSearch(query: string): void {
   }
 }
 
-export function tellmeSync(question: string, quick: boolean = false, useSession: boolean = false): void {
+export async function tellmeSync(question: string, quick: boolean = false, useSession: boolean = false): Promise<void> {
   ensureDir();
   const history = loadHistory();
 
@@ -168,7 +168,7 @@ export function tellmeSync(question: string, quick: boolean = false, useSession:
   const baseDelayMs = 2000;
 
   while (retries <= maxRetries) {
-    answer = askPi(question, history, quick, useSession);
+    answer = await askPi(question, history, quick, useSession);
 
     if (!answer.startsWith("[Error") && !answer.startsWith("[Pi timed out")) {
       break;
@@ -190,10 +190,10 @@ export function tellmeSync(question: string, quick: boolean = false, useSession:
   saveHistory(history);
 }
 
-export function tellmeDaemon(question: string): void {
+export async function tellmeDaemon(question: string): Promise<void> {
   ensureDir();
   const history = loadHistory();
-  const answer = askPi(question, history, false, false);
+  const answer = await askPi(question, history, false, false);
   history.push({ question, answer, time: Date.now() });
   saveHistory(history);
 }

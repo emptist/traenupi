@@ -29,7 +29,7 @@ import {
   listToArray,
   optionToNullable,
 } from "./gleam-bridge.js";
-import { psqlQuery, psqlExec } from "./db.js";
+import { querySafeText, execSafe } from "./db-safe.js";
 import { loadJsonFile, saveJsonFile, getStoragePath } from "./storage.js";
 
 export interface Reflection {
@@ -56,7 +56,7 @@ export interface Reflection {
 
 let reflectionStore: ReflectionStore$ = new_reflection_store();
 
-export function createReflection(
+export async function createReflection(
   summary: string,
   agentId: string,
   options?: {
@@ -64,7 +64,7 @@ export function createReflection(
     taskTitle?: string;
     type?: string;
   }
-): Reflection {
+): Promise<Reflection> {
   let reflection = new_reflection(summary, agentId);
   
   if (options?.taskId && options?.taskTitle) {
@@ -94,7 +94,7 @@ export function createReflection(
   if (options?.taskTitle) result.taskTitle = options.taskTitle;
   
   reflectionStore = store_reflection(reflectionStore, reflection);
-  saveReflectionToDb(result);
+  await saveReflectionToDb(result);
   
   return result;
 }
@@ -227,13 +227,13 @@ export function getReflectionCount(): number {
   return count_reflections(reflectionStore);
 }
 
-export function loadReflectionsFromDb(): void {
+export async function loadReflectionsFromDb(): Promise<void> {
   try {
-    const output = psqlQuery(
+    const output = await querySafeText(
       `SELECT id, task_id, summary, learnings, issues, suggestions, praise,
               overall_score, code_quality_score, test_coverage_score, documentation_score,
               agent_id, session_id, task_title, reflection_type, sentiment, created_at
-       FROM reflections ORDER BY created_at DESC LIMIT 100;`
+       FROM reflections ORDER BY created_at DESC LIMIT 100`
     );
     
     if (!output.trim()) return;
@@ -253,26 +253,20 @@ export function loadReflectionsFromDb(): void {
   }
 }
 
-export function saveReflectionToDb(reflection: Reflection): void {
+export async function saveReflectionToDb(reflection: Reflection): Promise<void> {
   try {
     const learningsJson = JSON.stringify(reflection.learnings);
     const issuesJson = JSON.stringify(reflection.issues);
     const suggestionsJson = JSON.stringify(reflection.suggestions);
     const praiseJson = JSON.stringify(reflection.praise);
     
-    psqlExec(
+    await execSafe(
       `INSERT INTO reflections (id, task_id, summary, learnings, issues, suggestions, praise,
          overall_score, code_quality_score, test_coverage_score, documentation_score,
          agent_id, session_id, task_title, reflection_type, sentiment)
-       VALUES ('${reflection.id}', ${reflection.taskId ? `'${reflection.taskId}'` : 'NULL'},
-               '${reflection.summary.replace(/'/g, "''")}',
-               '${learningsJson.replace(/'/g, "''")}', '${issuesJson.replace(/'/g, "''")}',
-               '${suggestionsJson.replace(/'/g, "''")}', '${praiseJson.replace(/'/g, "''")}',
-               ${reflection.overallScore || 'NULL'}, ${reflection.codeQualityScore || 'NULL'},
-               ${reflection.testCoverageScore || 'NULL'}, ${reflection.documentationScore || 'NULL'},
-               '${reflection.agentId}', ${reflection.sessionId ? `'${reflection.sessionId}'` : 'NULL'},
-               ${reflection.taskTitle ? `'${reflection.taskTitle.replace(/'/g, "''")}'` : 'NULL'},
-               '${reflection.reflectionType}', ${reflection.sentiment ? `'${reflection.sentiment}'` : 'NULL'})
+       VALUES ($1, $2, $3, $4, $5, $6, $7,
+               $8, $9, $10, $11,
+               $12, $13, $14, $15, $16)
        ON CONFLICT (id) DO UPDATE SET
          summary = EXCLUDED.summary,
          learnings = EXCLUDED.learnings,
@@ -280,7 +274,25 @@ export function saveReflectionToDb(reflection: Reflection): void {
          suggestions = EXCLUDED.suggestions,
          praise = EXCLUDED.praise,
          overall_score = EXCLUDED.overall_score,
-         updated_at = NOW();`
+         updated_at = NOW()`,
+      [
+        reflection.id,
+        reflection.taskId || null,
+        reflection.summary,
+        learningsJson,
+        issuesJson,
+        suggestionsJson,
+        praiseJson,
+        reflection.overallScore || null,
+        reflection.codeQualityScore || null,
+        reflection.testCoverageScore || null,
+        reflection.documentationScore || null,
+        reflection.agentId,
+        reflection.sessionId || null,
+        reflection.taskTitle || null,
+        reflection.reflectionType,
+        reflection.sentiment || null,
+      ]
     );
   } catch {
     // Database not available

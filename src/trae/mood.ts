@@ -1,8 +1,8 @@
 import type { MoodEntry } from "../common/types.js";
 import { loadMoodHistory, saveMoodHistory } from "../common/storage.js";
-import { psqlExec } from "../common/db.js";
+import { execSafe } from "../common/db-safe.js";
 
-export function recordMood(agentId: string, mood: string, context: string): void {
+export async function recordMood(agentId: string, mood: string, context: string): Promise<void> {
   const entry: MoodEntry = {
     agentId,
     mood,
@@ -15,10 +15,10 @@ export function recordMood(agentId: string, mood: string, context: string): void
   saveMoodHistory(history);
 
   try {
-    psqlExec(`
-      INSERT INTO agent_moods (agent_id, mood, context)
-      VALUES ('${agentId}', '${mood}', '${context.replace(/'/g, "''")}');
-    `);
+    await execSafe(
+      `INSERT INTO agent_moods (agent_id, mood, context) VALUES ($1, $2, $3);`,
+      [agentId, mood, context]
+    );
   } catch {}
 
   const emoji = getMoodEmoji(mood);

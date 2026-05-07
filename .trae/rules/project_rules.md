@@ -85,3 +85,36 @@ xcom inspire             # Get tweet ideas
 
 TraeNuPI knows your current working directory and project name.
 It includes this in context for the baby AI.
+
+### Critical: Protect psypi Database - READ ONLY Client
+
+TraeNuPI shares the `psypi` PostgreSQL database with other projects. **Always treat it as READ-ONLY**.
+
+**NEVER do these:**
+- CREATE TABLE, ALTER TABLE, DROP TABLE - Never modify database schema
+- CREATE INDEX, DROP INDEX - Don't create or modify indexes
+- Never assume you own the `skills` table or any other table
+
+**ALLOWED operations (with parameterized queries):**
+- SELECT queries to read data
+- INSERT/UPDATE/DELETE only in tables you create for TraeNuPI (with `source = 'traenupi'` tracking)
+- Use `db-safe.ts` functions (`querySafeText`, `execSafe`) with parameterized queries
+
+### Critical: Prevent External Directory Pollution
+
+TraeNuPI must stay within its own boundaries. **NEVER write outside `~/.traenupi/`**.
+
+**NEVER do these:**
+- Write to `~/.pi/agent/` or `~/.pi/` directories
+- Write to `~/.config/` unless specifically for TraeNuPI config
+- Write to any directory outside `~/.traenupi/`
+
+**ALWAYS do these:**
+- Use `~/.traenupi/` for all file operations
+- Use `~/.trae/skills/` for TraeNuPI-specific skills
+- If syncing to `~/.pi/agent/skills/`, use read-only or require explicit user opt-in
+
+**Current allowed directories:**
+- `~/.traenupi/` - Main TraeNuPI data directory
+- `~/.trae/skills/` - Local skill storage (TraeNuPI-specific)
+- Project working directory - For project-specific operations

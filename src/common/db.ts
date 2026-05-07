@@ -31,7 +31,20 @@ function buildPsqlCommand(): string {
  * @deprecated Use querySafe from db-safe.ts instead. This function is vulnerable to SQL injection.
  * @see db-safe.ts for secure parameterized queries
  */
+let _deprecationWarnedFns = new Set<string>();
+function warnDeprecation(fnName: string): void {
+  if (!_deprecationWarnedFns.has(fnName)) {
+    _deprecationWarnedFns.add(fnName);
+    console.warn(`[DEPRECATED] ${fnName} is deprecated and vulnerable to SQL injection. Use querySafe/execSafe from db-safe.ts instead.`);
+  }
+}
+
+export function _resetDeprecationWarnings(): void {
+  _deprecationWarnedFns.clear();
+}
+
 export function psqlQuery(sql: string, options?: DbQueryOptions): string {
+  warnDeprecation("psqlQuery");
   try {
     const escapedSql = sql.replace(/'/g, "'\"'\"'");
     const cmd = `${buildPsqlCommand()} -t -A -c '${escapedSql}'`;
@@ -52,6 +65,7 @@ export function psqlQuery(sql: string, options?: DbQueryOptions): string {
  * @see db-safe.ts for secure parameterized queries
  */
 export function psqlExec(sql: string, options?: DbQueryOptions): boolean {
+  warnDeprecation("psqlExec");
   try {
     const escapedSql = sql.replace(/'/g, "'\"'\"'");
     const cmd = `${buildPsqlCommand()} -c '${escapedSql}'`;
@@ -77,7 +91,7 @@ export function getAgentId(prefix: string = "S-TRAE"): string {
   }
 }
 
-export function resolveMeetingId(meetingId: string): string | null {
+export async function resolveMeetingId(meetingId: string): Promise<string | null> {
   return resolveMeetingIdImpl(meetingId);
 }
 

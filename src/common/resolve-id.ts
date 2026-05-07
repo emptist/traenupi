@@ -1,4 +1,4 @@
-import { psqlQuery } from "./db.js";
+import { querySafeText } from "./db-safe.js";
 
 export type EntityType =
   | "meeting"
@@ -58,11 +58,11 @@ export interface ResolveOptions {
   silent?: boolean;
 }
 
-export function resolveId(
+export async function resolveId(
   shortId: string,
   entityType: EntityType,
   options: ResolveOptions = {}
-): ResolutionResult | null {
+): Promise<ResolutionResult | null> {
   if (!validateShortId(shortId)) return null;
 
   if (shortId.length >= UUID_LENGTH) {
@@ -77,8 +77,11 @@ export function resolveId(
   const config = ENTITY_TABLES[entityType];
   if (!config) return null;
 
-  const sql = `SELECT ${config.idColumn} FROM ${config.table} WHERE ${config.idColumn}::text LIKE '${shortId}%' LIMIT 10;`;
-  const result = psqlQuery(sql, { silent: options.silent ?? true });
+  const result = await querySafeText(
+    `SELECT ${config.idColumn} FROM ${config.table} WHERE ${config.idColumn}::text LIKE $1 LIMIT 10;`,
+    [`${shortId}%`],
+    { silent: options.silent ?? true }
+  );
 
   if (!result) return null;
 
@@ -97,47 +100,50 @@ export function resolveId(
   };
 }
 
-export function resolveMeetingId(shortId: string): string | null {
-  const result = resolveId(shortId, "meeting");
+export async function resolveMeetingId(shortId: string): Promise<string | null> {
+  const result = await resolveId(shortId, "meeting");
   return result?.id ?? null;
 }
 
-export function resolveTaskId(shortId: string): string | null {
-  const result = resolveId(shortId, "task");
+export async function resolveTaskId(shortId: string): Promise<string | null> {
+  const result = await resolveId(shortId, "task");
   return result?.id ?? null;
 }
 
-export function resolveIssueId(shortId: string): string | null {
-  const result = resolveId(shortId, "issue");
+export async function resolveIssueId(shortId: string): Promise<string | null> {
+  const result = await resolveId(shortId, "issue");
   return result?.id ?? null;
 }
 
-export function resolveAgentId(shortId: string): string | null {
-  const result = resolveId(shortId, "agent");
+export async function resolveAgentId(shortId: string): Promise<string | null> {
+  const result = await resolveId(shortId, "agent");
   return result?.id ?? null;
 }
 
-export function resolveOpinionId(shortId: string): string | null {
-  const result = resolveId(shortId, "opinion");
+export async function resolveOpinionId(shortId: string): Promise<string | null> {
+  const result = await resolveId(shortId, "opinion");
   return result?.id ?? null;
 }
 
-export function resolveSkillId(shortId: string): string | null {
-  const result = resolveId(shortId, "skill");
+export async function resolveSkillId(shortId: string): Promise<string | null> {
+  const result = await resolveId(shortId, "skill");
   return result?.id ?? null;
 }
 
-export function detectEntityType(
+export async function detectEntityType(
   shortId: string,
   options: ResolveOptions = {}
-): ResolutionResult | null {
+): Promise<ResolutionResult | null> {
   if (!validateShortId(shortId)) return null;
 
   if (shortId.length >= UUID_LENGTH) {
     for (const entityType of DETECTION_ORDER) {
       const config = ENTITY_TABLES[entityType];
-      const sql = `SELECT ${config.idColumn} FROM ${config.table} WHERE ${config.idColumn}::text = '${shortId}' LIMIT 1;`;
-      const result = psqlQuery(sql, { silent: true });
+      const result = await querySafeText(
+        `SELECT ${config.idColumn} FROM ${config.table} WHERE ${config.idColumn}::text = $1 LIMIT 1;`,
+        [shortId],
+        { silent: true }
+      );
       if (result) {
         return {
           id: shortId,
@@ -151,7 +157,7 @@ export function detectEntityType(
   }
 
   for (const entityType of DETECTION_ORDER) {
-    const result = resolveId(shortId, entityType, {
+    const result = await resolveId(shortId, entityType, {
       ...options,
       allowAmbiguous: true,
     });

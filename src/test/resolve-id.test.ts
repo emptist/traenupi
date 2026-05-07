@@ -56,41 +56,41 @@ describe("resolve-id", () => {
   });
 
   describe("resolveId", () => {
-    it("should return null for invalid short ID", () => {
-      const result = resolveId("xx", "meeting");
+    it("should return null for invalid short ID", async () => {
+      const result = await resolveId("xx", "meeting");
       assert.strictEqual(result, null);
     });
 
-    it("should return null for non-existent ID", () => {
-      const result = resolveId("ffffffff", "meeting");
+    it("should return null for non-existent ID", async () => {
+      const result = await resolveId("ffffffff", "meeting");
       assert.strictEqual(result, null);
     });
 
-    it("should return full UUID for a full UUID input", () => {
+    it("should return full UUID for a full UUID input", async () => {
       const fullId = "1d45fcd0-3fb1-4f8b-b0a2-8548b95519b8";
-      const result = resolveId(fullId, "meeting");
+      const result = await resolveId(fullId, "meeting");
       assert.ok(result);
       assert.strictEqual(result.id, fullId);
       assert.strictEqual(result.ambiguous, false);
       assert.strictEqual(result.matches, 1);
     });
 
-    it("should return entity type in result", () => {
-      const result = resolveId("1d45fcd0-3fb1-4f8b-b0a2-8548b95519b8", "task");
+    it("should return entity type in result", async () => {
+      const result = await resolveId("1d45fcd0-3fb1-4f8b-b0a2-8548b95519b8", "task");
       if (result) {
         assert.strictEqual(result.entityType, "task");
       }
     });
 
-    it("should detect ambiguity when multiple matches exist", () => {
-      const result = resolveId("1", "meeting", { allowAmbiguous: true });
+    it("should detect ambiguity when multiple matches exist", async () => {
+      const result = await resolveId("1", "meeting", { allowAmbiguous: true });
       if (result && result.matches > 1) {
         assert.strictEqual(result.ambiguous, true);
       }
     });
 
-    it("should return null by default when ambiguous", () => {
-      const result = resolveId("1", "meeting");
+    it("should return null by default when ambiguous", async () => {
+      const result = await resolveId("1", "meeting");
       if (result === null) {
         assert.strictEqual(result, null);
       }
@@ -98,62 +98,62 @@ describe("resolve-id", () => {
   });
 
   describe("resolveMeetingId", () => {
-    it("should return null for non-existent meeting ID", () => {
-      const result = resolveMeetingId("ffffffff");
+    it("should return null for non-existent meeting ID", async () => {
+      const result = await resolveMeetingId("ffffffff");
       assert.strictEqual(result, null);
     });
 
-    it("should return full UUID for a valid full UUID input", () => {
+    it("should return full UUID for a valid full UUID input", async () => {
       const fullId = "1d45fcd0-3fb1-4f8b-b0a2-8548b95519b8";
-      const result = resolveMeetingId(fullId);
+      const result = await resolveMeetingId(fullId);
       assert.strictEqual(result, fullId);
     });
   });
 
   describe("resolveTaskId", () => {
-    it("should return null for non-existent task ID", () => {
-      const result = resolveTaskId("ffffffff");
+    it("should return null for non-existent task ID", async () => {
+      const result = await resolveTaskId("ffffffff");
       assert.strictEqual(result, null);
     });
   });
 
   describe("resolveIssueId", () => {
-    it("should return null for non-existent issue ID", () => {
-      const result = resolveIssueId("ffffffff");
+    it("should return null for non-existent issue ID", async () => {
+      const result = await resolveIssueId("ffffffff");
       assert.strictEqual(result, null);
     });
   });
 
   describe("resolveAgentId", () => {
-    it("should return null for non-existent agent ID", () => {
-      const result = resolveAgentId("ffffffff");
+    it("should return null for non-existent agent ID", async () => {
+      const result = await resolveAgentId("ffffffff");
       assert.strictEqual(result, null);
     });
   });
 
   describe("resolveOpinionId", () => {
-    it("should return null for non-existent opinion ID", () => {
-      const result = resolveOpinionId("ffffffff");
+    it("should return null for non-existent opinion ID", async () => {
+      const result = await resolveOpinionId("ffffffff");
       assert.strictEqual(result, null);
     });
   });
 
   describe("resolveSkillId", () => {
-    it("should return null for non-existent skill ID", () => {
-      const result = resolveSkillId("ffffffff");
+    it("should return null for non-existent skill ID", async () => {
+      const result = await resolveSkillId("ffffffff");
       assert.strictEqual(result, null);
     });
   });
 
   describe("detectEntityType", () => {
-    it("should return null for non-existent ID", () => {
-      const result = detectEntityType("ffffffff");
+    it("should return null for non-existent ID", async () => {
+      const result = await detectEntityType("ffffffff");
       assert.strictEqual(result, null);
     });
 
-    it("should return the entity type when found", () => {
+    it("should return the entity type when found", async () => {
       const fullId = "1d45fcd0-3fb1-4f8b-b0a2-8548b95519b8";
-      const result = detectEntityType(fullId);
+      const result = await detectEntityType(fullId);
       if (result) {
         assert.ok(["meeting", "task", "issue", "agent", "opinion", "skill", "memory"].includes(result.entityType));
       }

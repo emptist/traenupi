@@ -2,7 +2,8 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from "node:fs";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
-import { psqlExec, getDbConfig } from "../common/db.js";
+import { getDbConfig } from "../common/db.js";
+import { querySafeText, execSafe } from "../common/db-safe.js";
 
 function getDbName(): string {
   const config = getDbConfig();
@@ -306,12 +307,11 @@ export function importSkillFromSource(
     const skillContent = convertToTraeNuPIFormat(skill);
     
     if (options.useDb) {
-      const escapedDesc = skill.description.replace(/'/g, "''");
-      const escapedInstructions = skill.content.replace(/'/g, "''");
-      const contentJson = JSON.stringify({ markdown: skill.content }).replace(/'/g, "''");
-      
-      const checkSql = `SELECT id FROM skills WHERE name = '${skill.name}'`;
-      const existingId = execSync(`psql -h localhost -U postgres -d ${getDbName()} -t -c "${checkSql}"`, { encoding: "utf-8" }).trim();
+      const checkResult = await querySafeText(
+        "SELECT id FROM skills WHERE name = $1",
+        [skill.name]
+      );
+      const existingId = checkResult.trim();
       
       if (existingId && !options.force) {
         results.push({
@@ -322,26 +322,21 @@ export function importSkillFromSource(
         continue;
       }
       
-      let sql: string;
-      if (existingId && options.force) {
-        sql = `UPDATE skills SET description = '${escapedDesc}', instructions = '${escapedInstructions}', content = '${contentJson}'::jsonb, source = 'imported', updated_at = NOW() WHERE name = '${skill.name}'`;
-      } else {
-        sql = `INSERT INTO skills (id, name, description, instructions, content, source) VALUES (gen_random_uuid(), '${skill.name}', '${escapedDesc}', '${escapedInstructions}', '${contentJson}'::jsonb, 'imported')`;
-      }
-      
-      const tmpFile = join(homedir(), ".traenupi-import-skill.sql");
-      writeFileSync(tmpFile, sql);
-      
       let success = false;
       try {
-        execSync(`psql -h localhost -U postgres -d ${getDbName()} -f ${tmpFile}`, { encoding: "utf-8" });
-        success = true;
+        if (existingId && options.force) {
+          success = await execSafe(
+            "UPDATE skills SET description = $1, instructions = $2, content = $3::jsonb, source = 'imported', updated_at = NOW() WHERE name = $4",
+            [skill.description, skill.content, JSON.stringify({ markdown: skill.content }), skill.name]
+          );
+        } else {
+          success = await execSafe(
+            "INSERT INTO skills (id, name, description, instructions, content, source) VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, 'imported')",
+            [skill.name, skill.description, skill.content, JSON.stringify({ markdown: skill.content })]
+          );
+        }
       } catch {
         success = false;
-      } finally {
-        if (existsSync(tmpFile)) {
-          unlinkSync(tmpFile);
-        }
       }
       
       results.push({
@@ -420,24 +415,24 @@ export interface SyncResult {
   error?: string;
 }
 
-export function syncDatabaseSkillsToPi(): SyncResult[] {
+export async function syncDatabaseSkillsToPi(): Promise<SyncResult[]> {
   const results: SyncResult[] = [];
   
-  const query = "SELECT name, description, instructions FROM skills";
-  const output = execSync(
-    `psql -h localhost -U postgres -d ${getDbName()} -t -A -F'|' -c "${query}"`,
-    { encoding: "utf-8" }
-  ).trim();
+  const queryResult = await querySafeText(
+    "SELECT name, description, instructions FROM skills",
+    []
+  );
+  const output = queryResult.trim();
   
   if (!output) {
     console.log("No skills found in database");
     return results;
   }
   
-  const piSkillsDir = join(homedir(), ".pi", "agent", "skills");
+  const traeSkillsDir = join(homedir(), ".trae", "skills");
   
-  if (!existsSync(piSkillsDir)) {
-    mkdirSync(piSkillsDir, { recursive: true });
+  if (!existsSync(traeSkillsDir)) {
+    mkdirSync(traeSkillsDir, { recursive: true });
   }
   
   const lines = output.split("\n");
@@ -456,7 +451,7 @@ export function syncDatabaseSkillsToPi(): SyncResult[] {
       continue;
     }
     
-    const skillDir = join(piSkillsDir, name);
+    const skillDir = join(traeSkillsDir, name);
     const skillFile = join(skillDir, "SKILL.md");
     
     try {
@@ -497,7 +492,7 @@ export function printSyncResults(results: SyncResult[]): void {
   const failed = results.filter(r => !r.success);
   
   console.log(`Total skills: ${results.length}`);
-  console.log(`✅ Synced to pi: ${succeeded.length}`);
+  console.log(`✅ Synced: ${succeeded.length}`);
   console.log(`❌ Failed: ${failed.length}`);
   
   if (failed.length > 0) {
@@ -507,11 +502,11 @@ export function printSyncResults(results: SyncResult[]): void {
     }
   }
   
-  console.log(`\nSkills are now available in: ~/.pi/agent/skills/`);
-  console.log("Pi will discover them automatically on next invocation.\n");
+  console.log(`\nSkills are now available in: ~/.trae/skills/`);
+  console.log("TraeNuPI will discover them automatically on next invocation.\n");
 }
 
-export function syncFileSystemSkillsToDb(): SyncResult[] {
+export async function syncFileSystemSkillsToDb(): Promise<SyncResult[]> {
   const results: SyncResult[] = [];
   
   const traeSkillsDir = join(homedir(), ".trae", "skills");
@@ -550,31 +545,28 @@ export function syncFileSystemSkillsToDb(): SyncResult[] {
         continue;
       }
       
-      const escapedDesc = skill.description.replace(/'/g, "''");
-      const escapedInstructions = skill.content.replace(/'/g, "''");
-      const contentJson = JSON.stringify({ markdown: skill.content }).replace(/'/g, "''");
+      const checkResult = await querySafeText(
+        "SELECT id FROM skills WHERE name = $1",
+        [skill.name]
+      );
+      const existingId = checkResult.trim();
       
-      const checkSql = `SELECT id FROM skills WHERE name = '${skill.name}'`;
-      const existingId = execSync(
-        `psql -h localhost -U postgres -d ${getDbName()} -t -c "${checkSql}"`,
-        { encoding: "utf-8" }
-      ).trim();
-      
-      let sql: string;
-      if (existingId) {
-        sql = `UPDATE skills SET description = '${escapedDesc}', instructions = '${escapedInstructions}', content = '${contentJson}'::jsonb, source = 'local', updated_at = NOW() WHERE name = '${skill.name}'`;
-      } else {
-        sql = `INSERT INTO skills (id, name, description, instructions, content, source) VALUES (gen_random_uuid(), '${skill.name}', '${escapedDesc}', '${escapedInstructions}', '${contentJson}'::jsonb, 'local')`;
-      }
-      
-      const tmpFile = join(homedir(), ".traenupi-sync-skill.sql");
-      writeFileSync(tmpFile, sql);
-      
+      let success = false;
       try {
-        execSync(`psql -h localhost -U postgres -d ${getDbName()} -f ${tmpFile}`, { encoding: "utf-8" });
+        if (existingId) {
+          success = await execSafe(
+            "UPDATE skills SET description = $1, instructions = $2, content = $3::jsonb, source = 'local', updated_at = NOW() WHERE name = $4",
+            [skill.description, skill.content, JSON.stringify({ markdown: skill.content }), skill.name]
+          );
+        } else {
+          success = await execSafe(
+            "INSERT INTO skills (id, name, description, instructions, content, source) VALUES (gen_random_uuid(), $1, $2, $3, $4::jsonb, 'local')",
+            [skill.name, skill.description, skill.content, JSON.stringify({ markdown: skill.content })]
+          );
+        }
         results.push({
           name: skill.name,
-          success: true,
+          success: success,
         });
       } catch (error) {
         results.push({
@@ -582,10 +574,6 @@ export function syncFileSystemSkillsToDb(): SyncResult[] {
           success: false,
           error: `Failed to sync to database: ${error}`,
         });
-      } finally {
-        if (existsSync(tmpFile)) {
-          unlinkSync(tmpFile);
-        }
       }
     } catch (error) {
       results.push({

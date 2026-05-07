@@ -1,9 +1,10 @@
 import type { AIPresence } from "../common/types.js";
-import { psqlQuery, psqlExec, getAgentId } from "../common/db.js";
+import { getAgentId } from "../common/db.js";
+import { querySafeText, execSafe } from "../common/db-safe.js";
 
-export function loadPresence(): AIPresence[] {
+export async function loadPresence(): Promise<AIPresence[]> {
   try {
-    const output = psqlQuery("SELECT id, status, agent_type, last_heartbeat, working_on FROM agent_sessions ORDER BY last_heartbeat DESC;");
+    const output = await querySafeText("SELECT id, status, agent_type, last_heartbeat, working_on FROM agent_sessions ORDER BY last_heartbeat DESC");
     if (!output.trim()) return [];
 
     return output.split("\n").map(line => {
@@ -28,28 +29,27 @@ export function loadPresenceLocal(): AIPresence[] {
 
 export function savePresenceLocal(_presence: AIPresence[]): void {}
 
-export function updatePresence(agentId: string, status: string, focus: string, _project: string): void {
-  const safeStatus = status.replace(/'/g, "''");
-  const safeFocus = focus.replace(/'/g, "''");
+export async function updatePresence(agentId: string, status: string, focus: string, _project: string): Promise<void> {
+  const workingOn = `${status} - ${focus}`;
 
-  psqlExec(`
+  await execSafe(`
     INSERT INTO agent_sessions (id, status, working_on, project, last_heartbeat, started_at)
-    VALUES ('${agentId}', 'alive', '${safeStatus} - ${safeFocus}', 'traenupi', NOW(), COALESCE((SELECT started_at FROM agent_sessions WHERE id = '${agentId}'), NOW()))
+    VALUES ($1, 'alive', $2, 'traenupi', NOW(), COALESCE((SELECT started_at FROM agent_sessions WHERE id = $1), NOW()))
     ON CONFLICT (id) DO UPDATE SET
       status = 'alive',
-      working_on = '${safeStatus} - ${safeFocus}',
-      last_heartbeat = NOW();
-  `);
+      working_on = $2,
+      last_heartbeat = NOW()
+  `, [agentId, workingOn]);
 }
 
-export function getOnlineAIs(): AIPresence[] {
-  const presence = loadPresence();
+export async function getOnlineAIs(): Promise<AIPresence[]> {
+  const presence = await loadPresence();
   const tenMinutes = 10 * 60 * 1000;
   return presence.filter(p => Date.now() - p.lastSeen < tenMinutes);
 }
 
-export function showPresence(): void {
-  const online = getOnlineAIs();
+export async function showPresence(): Promise<void> {
+  const online = await getOnlineAIs();
 
   console.log("╔════════════════════════════════════════════╗");
   console.log("║     AI Presence - Who's Online             ║");
@@ -84,20 +84,20 @@ export function showPresence(): void {
   console.log("──────────────────────────────────────────────────\n");
 }
 
-export function showActivityHeatmap(): void {
+export async function showActivityHeatmap(): Promise<void> {
   console.log("╔════════════════════════════════════════════╗");
   console.log("║     Activity Heatmap (Last 24 Hours)       ║");
   console.log("╚════════════════════════════════════════════╝\n");
 
   try {
-    const output = psqlQuery(`
+    const output = await querySafeText(`
       SELECT 
         EXTRACT(HOUR FROM created_at) as hour,
         COUNT(*) as count
       FROM meeting_opinions
       WHERE created_at > NOW() - INTERVAL '24 hours'
       GROUP BY hour
-      ORDER BY hour;
+      ORDER BY hour
     `);
 
     if (!output.trim()) {
@@ -138,19 +138,19 @@ export function showActivityHeatmap(): void {
   console.log("──────────────────────────────────────────────────\n");
 }
 
-export function showCollaboration(): void {
+export async function showCollaboration(): Promise<void> {
   console.log("╔════════════════════════════════════════════╗");
   console.log("║     AI Collaboration Analytics             ║");
   console.log("╚════════════════════════════════════════════╝\n");
 
   try {
-    const agentsOutput = psqlQuery(`
+    const agentsOutput = await querySafeText(`
       SELECT author, COUNT(*) as opinion_count
       FROM meeting_opinions
       WHERE created_at > NOW() - INTERVAL '7 days'
       GROUP BY author
       ORDER BY opinion_count DESC
-      LIMIT 10;
+      LIMIT 10
     `);
 
     if (!agentsOutput.trim()) {

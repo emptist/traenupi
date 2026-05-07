@@ -1,5 +1,5 @@
-import { psqlQuery, psqlExec } from "./db.js";
 import { loadJsonFile, saveJsonFile, getStoragePath } from "./storage.js";
+import { querySafeText, execSafe } from "./db-safe.js";
 import type { KnowledgeEntry } from "./types.js";
 
 export type { KnowledgeEntry } from "./types.js";
@@ -18,14 +18,15 @@ export function setKnowledgeConfig(config: Partial<KnowledgeConfig>): void {
   knowledgeConfig = { ...knowledgeConfig, ...config };
 }
 
-export function loadKnowledge(): KnowledgeEntry[] {
+export async function loadKnowledge(): Promise<KnowledgeEntry[]> {
   if (!knowledgeConfig.useDatabase) {
     return loadKnowledgeLocal();
   }
 
   try {
-    const output = psqlQuery(
-      `SELECT content, source, tags FROM memory WHERE source = '${knowledgeConfig.source}' ORDER BY created_at DESC LIMIT 50;`
+    const output = await querySafeText(
+      `SELECT content, source, tags FROM memory WHERE source = $1 ORDER BY created_at DESC LIMIT 50;`,
+      [knowledgeConfig.source!]
     );
     if (!output) return loadKnowledgeLocal();
 
@@ -51,14 +52,15 @@ export function loadKnowledgeLocal(): KnowledgeEntry[] {
   return loadJsonFile(getStoragePath("knowledge.json"), []);
 }
 
-export function addKnowledge(key: string, value: string, category: string): void {
+export async function addKnowledge(key: string, value: string, category: string): Promise<void> {
   const content = `${key}: ${value}`;
   const tags = `{${knowledgeConfig.source},${category}}`;
 
   if (knowledgeConfig.useDatabase) {
     try {
-      psqlExec(
-        `INSERT INTO memory (content, source, tags) VALUES ('${content.replace(/'/g, "''")}', '${knowledgeConfig.source}', '${tags}');`
+      await execSafe(
+        `INSERT INTO memory (content, source, tags) VALUES ($1, $2, $3);`,
+        [content, knowledgeConfig.source!, tags]
       );
       return;
     } catch {}
@@ -75,14 +77,15 @@ export function addKnowledge(key: string, value: string, category: string): void
   saveJsonFile(getStoragePath("knowledge.json"), knowledge);
 }
 
-export function getKnowledgeByCategory(category: string): KnowledgeEntry[] {
+export async function getKnowledgeByCategory(category: string): Promise<KnowledgeEntry[]> {
   if (!knowledgeConfig.useDatabase) {
     return loadKnowledgeLocal().filter(k => k.category === category);
   }
 
   try {
-    const output = psqlQuery(
-      `SELECT content FROM memory WHERE source = '${knowledgeConfig.source}' AND '${category}' = ANY(tags) ORDER BY created_at DESC LIMIT 20;`
+    const output = await querySafeText(
+      `SELECT content FROM memory WHERE source = $1 AND $2 = ANY(tags) ORDER BY created_at DESC LIMIT 20;`,
+      [knowledgeConfig.source!, category]
     );
     if (!output.trim()) return [];
 
@@ -100,7 +103,7 @@ export function getKnowledgeByCategory(category: string): KnowledgeEntry[] {
   }
 }
 
-export function searchKnowledge(term: string): KnowledgeEntry[] {
+export async function searchKnowledge(term: string): Promise<KnowledgeEntry[]> {
   if (!knowledgeConfig.useDatabase) {
     const knowledge = loadKnowledgeLocal();
     const termLower = term.toLowerCase();
@@ -110,8 +113,9 @@ export function searchKnowledge(term: string): KnowledgeEntry[] {
   }
 
   try {
-    const output = psqlQuery(
-      `SELECT content, source, tags FROM memory WHERE source = '${knowledgeConfig.source}' AND content ILIKE '%${term}%' ORDER BY created_at DESC LIMIT 20;`
+    const output = await querySafeText(
+      `SELECT content, source, tags FROM memory WHERE source = $1 AND content ILIKE $2 ORDER BY created_at DESC LIMIT 20;`,
+      [knowledgeConfig.source!, `%${term}%`]
     );
     if (!output.trim()) return [];
 
@@ -132,14 +136,15 @@ export function searchKnowledge(term: string): KnowledgeEntry[] {
   }
 }
 
-export function getRecentKnowledge(limit: number = 10): KnowledgeEntry[] {
+export async function getRecentKnowledge(limit: number = 10): Promise<KnowledgeEntry[]> {
   if (!knowledgeConfig.useDatabase) {
     return loadKnowledgeLocal().slice(0, limit);
   }
 
   try {
-    const output = psqlQuery(
-      `SELECT content, tags, created_at FROM memory WHERE source = '${knowledgeConfig.source}' ORDER BY created_at DESC LIMIT ${limit};`
+    const output = await querySafeText(
+      `SELECT content, tags, created_at FROM memory WHERE source = $1 ORDER BY created_at DESC LIMIT $2;`,
+      [knowledgeConfig.source!, limit]
     );
     if (!output.trim()) return [];
 

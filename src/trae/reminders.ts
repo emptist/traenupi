@@ -1,6 +1,6 @@
 import type { Reminder } from "../common/types.js";
 import { loadReminders, saveReminders, ensureDir } from "../common/storage.js";
-import { psqlExec } from "../common/db.js";
+import { execSafe } from "../common/db-safe.js";
 
 export function addReminder(minutes: number, message: string): void {
   ensureDir();
@@ -15,23 +15,23 @@ export function addReminder(minutes: number, message: string): void {
   console.log(`[TRAENUPI] Reminder set for ${triggerTime}: "${message}"`);
 }
 
-export function checkReminders(): void {
+export async function checkReminders(): Promise<void> {
   const reminders = loadReminders();
   const now = Date.now();
 
-  reminders.forEach(reminder => {
+  for (const reminder of reminders) {
     if (!reminder.triggered && now >= reminder.triggerAt) {
       console.log(`\n⏰ REMINDER: ${reminder.message}`);
       reminder.triggered = true;
 
       try {
-        psqlExec(`
-          INSERT INTO memory (content, source, tags)
-          VALUES ('Reminder triggered: ${reminder.message.replace(/'/g, "''")}', 'traenupi', '{reminder,triggered}');
-        `);
+        await execSafe(
+          `INSERT INTO memory (content, source, tags) VALUES ($1, 'traenupi', '{reminder,triggered}');`,
+          [`Reminder triggered: ${reminder.message}`]
+        );
       } catch {}
     }
-  });
+  }
 
   saveReminders(reminders);
 }

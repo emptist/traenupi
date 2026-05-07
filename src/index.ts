@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { createDriver } from "./driver.js";
 import { createTask, loadTask } from "./task.js";
 import type { DriverConfig } from "./common/types.js";
-import { psqlQuery, psqlExec, getAgentId, resolveMeetingId } from "./common/db.js";
+import { getAgentId, resolveMeetingId } from "./common/db.js";
+import { querySafe, execSafe, querySafeText } from "./common/db-safe.js";
 import { resolveId, resolveTaskId, resolveIssueId, resolveAgentId, resolveOpinionId, resolveSkillId, detectEntityType, validateShortId, type EntityType } from "./common/resolve-id.js";
 import { loadKnowledge, addKnowledge, getKnowledgeByCategory, searchKnowledge, getRecentKnowledge, getKnowledgeStats, loadKnowledgeLocal, type KnowledgeEntry } from "./common/knowledge-gleam.js";
 import { 
@@ -96,8 +97,6 @@ const BABY_AI_STATE_FILE = join(TRAENUPI_DIR, "baby_ai_state.json");
 const PRESENCE_FILE = join(TRAENUPI_DIR, "presence.json");
 const BOOKMARKS_FILE = join(TRAENUPI_DIR, "bookmarks.json");
 const MOOD_FILE = join(TRAENUPI_DIR, "mood_history.json");
-
-const PSQL = "psql -h localhost -U postgres -d nezha";
 
 function printUsage(): void {
   console.log(`
@@ -317,9 +316,9 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     if (useDaemon) {
-      tellmeDaemon(question);
+      await tellmeDaemon(question);
     } else {
-      tellmeSync(question, useQuick, useSession);
+      await tellmeSync(question, useQuick, useSession);
     }
     return;
   }
@@ -340,7 +339,7 @@ async function main(): Promise<void> {
     
     if (rest.length === 0) {
       try {
-        const output = psqlQuery("SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 30;");
+        const output = await querySafeText("SELECT content, tags, created_at FROM memory WHERE source = 'traenupi' ORDER BY created_at DESC LIMIT 30");
         if (output.trim()) {
           console.log("[TRAENUPI] Knowledge Store (Nezha DB)\n");
           for (const line of output.trim().split("\n")) {
@@ -395,13 +394,13 @@ async function main(): Promise<void> {
           console.log(`[TRAENUPI] Processing ${parsed.entries.length} knowledge entries...`);
           for (const entry of parsed.entries) {
             validateJsonKnowledge(entry);
-            addKnowledge(entry.key, entry.value, entry.category, entry.tags, entry.importance);
+            await addKnowledge(entry.key, entry.value, entry.category, entry.tags, entry.importance);
             console.log(`  ✓ [${entry.category}] ${entry.key}`);
           }
           console.log(`[TRAENUPI] Stored ${parsed.entries.length} knowledge entries`);
         } else {
           validateJsonKnowledge(parsed);
-          addKnowledge(parsed.key, parsed.value, parsed.category, parsed.tags, parsed.importance);
+          await addKnowledge(parsed.key, parsed.value, parsed.category, parsed.tags, parsed.importance);
           console.log(`[TRAENUPI] Stored in Nezha DB: [${parsed.category}] ${parsed.key}`);
         }
       } catch (error) {
@@ -412,7 +411,7 @@ async function main(): Promise<void> {
     
     if (firstArg === "--recent" || firstArg === "-r") {
       const limit = parseInt(rest[1], 10) || 10;
-      const recent = getRecentKnowledge(limit);
+      const recent = await getRecentKnowledge(limit);
       
       if (recent.length === 0) {
         console.log("[TRAENUPI] No knowledge stored yet.");
@@ -434,7 +433,7 @@ async function main(): Promise<void> {
       
       console.log(`[TRAENUPI] Searching for "${searchTerm}"...\n`);
       
-      const matches = searchKnowledge(searchTerm);
+      const matches = await searchKnowledge(searchTerm);
       
       if (matches.length === 0) {
         console.log("No matching knowledge found.");
@@ -451,12 +450,12 @@ async function main(): Promise<void> {
     if (rest.length >= 2 && firstArg.includes(":")) {
       const [category, key] = firstArg.split(":", 2);
       const value = rest.slice(1).join(" ");
-      addKnowledge(key, value, category);
+      await addKnowledge(key, value, category);
       console.log(`[TRAENUPI] Stored in Nezha DB: [${category}] ${key} = ${value}`);
       return;
     }
     
-    const categoryEntries = getKnowledgeByCategory(firstArg);
+    const categoryEntries = await getKnowledgeByCategory(firstArg);
     if (categoryEntries.length > 0) {
       console.log(`[TRAENUPI] Knowledge: [${firstArg}]\n`);
       for (const e of categoryEntries) {
@@ -515,7 +514,7 @@ async function main(): Promise<void> {
           const reflectionData = parseJsonReflection(jsonInput);
           const agentId = getAgentId();
           
-          let reflection = createReflection(
+          let reflection = await createReflection(
             reflectionData.summary, 
             agentId, 
             {
@@ -585,7 +584,7 @@ async function main(): Promise<void> {
       }
       
       const agentId = getAgentId();
-      const reflection = createReflection(summary, agentId);
+      const reflection = await createReflection(summary, agentId);
       console.log(`[TRAENUPI] Created reflection: ${reflection.id}`);
       console.log(`  Summary: ${reflection.summary}`);
       console.log(`  Agent: ${reflection.agentId}`);
@@ -593,7 +592,7 @@ async function main(): Promise<void> {
     }
     
     if (subCommand === "list") {
-      loadReflectionsFromDb();
+      await loadReflectionsFromDb();
       const reflections = getAllReflections();
       if (reflections.length === 0) {
         console.log("[TRAENUPI] No reflections stored yet.");
@@ -746,7 +745,7 @@ async function main(): Promise<void> {
       const agentId = getAgentId();
       const project = "traenupi";
       
-      updatePresence(agentId, statusText, focusText, project);
+      await updatePresence(agentId, statusText, focusText, project);
       console.log(`[TRAENUPI] Presence updated!`);
       console.log(`   Agent: ${agentId}`);
       console.log(`   Status: ${statusText}`);
@@ -755,22 +754,22 @@ async function main(): Promise<void> {
       return;
     }
     
-    showStatus();
+    await showStatus();
     return;
   }
   
   if (command === "presence" || command === "online" || command === "who") {
-    showPresence();
+    await showPresence();
     return;
   }
   
   if (command === "heatmap" || command === "activity") {
-    showActivityHeatmap();
+    await showActivityHeatmap();
     return;
   }
   
   if (command === "collab" || command === "collaboration" || command === "team") {
-    showCollaboration();
+    await showCollaboration();
     return;
   }
   
@@ -807,7 +806,7 @@ async function main(): Promise<void> {
     const mood = subCommand;
     const context = args.slice(2).join(" ") || "Working on traenupi";
     
-    recordMood(agentId, mood, context);
+    await recordMood(agentId, mood, context);
     return;
   }
   
@@ -828,7 +827,7 @@ async function main(): Promise<void> {
     
     // Knowledge count
     try {
-      const knowledgeCount = psqlQuery("SELECT COUNT(*) FROM memory WHERE source = 'traenupi';");
+      const knowledgeCount = await querySafeText("SELECT COUNT(*) FROM memory WHERE source = 'traenupi'");
       console.log(`📚 Knowledge: ${knowledgeCount.trim() || "0"} entries`);
     } catch {
       console.log("📚 Knowledge: N/A");
@@ -836,7 +835,7 @@ async function main(): Promise<void> {
     
     // Meeting stats
     try {
-      const meetingStats = psqlQuery("SELECT COUNT(DISTINCT meeting_id), COUNT(*) FROM meeting_opinions;");
+      const meetingStats = await querySafeText("SELECT COUNT(DISTINCT meeting_id), COUNT(*) FROM meeting_opinions");
       const [meetings, opinions] = meetingStats.split("|");
       console.log(`💬 Meetings: ${meetings.trim()} active, ${opinions.trim()} opinions`);
     } catch {
@@ -845,7 +844,7 @@ async function main(): Promise<void> {
     
     // Nezha tasks
     try {
-      const tasks = psqlQuery("SELECT COUNT(*) FROM tasks WHERE status IN ('PENDING', 'RUNNING', 'PAUSED');");
+      const tasks = await querySafeText("SELECT COUNT(*) FROM tasks WHERE status IN ('PENDING', 'RUNNING', 'PAUSED')");
       const taskCount = tasks.trim() || "0";
       console.log(`📋 Nezha: ${taskCount} pending tasks`);
     } catch {
@@ -1052,7 +1051,7 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       console.log("║     Database Tables Documentation          ║");
       console.log("╚════════════════════════════════════════════╝\n");
       
-      const output = psqlQuery("SELECT table_name, purpose FROM table_documentation ORDER BY table_name;");
+      const output = await querySafeText("SELECT table_name, purpose FROM table_documentation ORDER BY table_name");
       if (output) {
         const lines = output.split("\n");
         for (const line of lines) {
@@ -1070,7 +1069,11 @@ Welcome! You're now working with TraeNuPI, your AI companion.
       return;
     }
     
-    const output = psqlQuery(`SELECT table_name, purpose, usage_context, key_columns, cli_commands, example_queries FROM table_documentation WHERE table_name = '${tableName}';`);
+    const tableRows = await querySafe<{ table_name: string; purpose: string; usage_context: string; key_columns: string; cli_commands: string; example_queries: string }>(
+      "SELECT table_name, purpose, usage_context, key_columns, cli_commands, example_queries FROM table_documentation WHERE table_name = $1",
+      [tableName]
+    );
+    const output = tableRows.length > 0 ? tableRows.map(r => [r.table_name, r.purpose, r.usage_context, r.key_columns, r.cli_commands, r.example_queries].join("|")).join("\n") : "";
     
     if (!output || !output.trim()) {
       console.log(`[TRAENUPI] Table '${tableName}' not found in documentation.`);
@@ -1185,7 +1188,7 @@ EXAMPLES:
       console.log("║     Skill Gap Scanner                      ║");
       console.log("╚════════════════════════════════════════════╝\n");
 
-      const results = scanSkills();
+      const results = await scanSkills();
       if (results.length === 0) {
         console.log("[TRAENUPI] No skills found in database.");
         return;
@@ -1224,7 +1227,7 @@ EXAMPLES:
     }
 
     if (subCommand === "score") {
-      const results = scanSkills();
+      const results = await scanSkills();
       if (results.length === 0) {
         console.log("[TRAENUPI] No skills found in database.");
         return;
@@ -1255,13 +1258,13 @@ EXAMPLES:
       }
 
       const { resolveSkillId } = await import("./common/resolve-id.js");
-      const fullId = resolveSkillId(skillId);
+      const fullId = await resolveSkillId(skillId);
       if (!fullId) {
         console.log(`[ERROR] Skill not found: ${skillId}`);
         return;
       }
 
-      const success = autoImproveTriggerPhrases(fullId);
+      const success = await autoImproveTriggerPhrases(fullId);
       if (success) {
         console.log(`[TRAENUPI] ✅ Trigger phrases auto-generated for skill ${fullId.substring(0, 8)}`);
       } else {
@@ -1314,20 +1317,20 @@ EXAMPLES:
       
       if (direction === "--to-db" || direction === "-d") {
         console.log("[TRAENUPI] Syncing file system skills to database...");
-        const results = syncFileSystemSkillsToDb();
+        const results = await syncFileSystemSkillsToDb();
         printSyncResults(results);
       } else if (direction === "--to-files" || direction === "-f") {
-        console.log("[TRAENUPI] Syncing database skills to pi skill directory...");
-        const results = syncDatabaseSkillsToPi();
+        console.log("[TRAENUPI] Syncing database skills to Trae skill directory...");
+        const results = await syncDatabaseSkillsToPi();
         printSyncResults(results);
       } else {
         console.log("[TRAENUPI] Syncing both directions...");
         console.log("\n1. File system → Database:");
-        const results1 = syncFileSystemSkillsToDb();
+        const results1 = await syncFileSystemSkillsToDb();
         printSyncResults(results1);
         
         console.log("\n2. Database → File system:");
-        const results2 = syncDatabaseSkillsToPi();
+        const results2 = await syncDatabaseSkillsToPi();
         printSyncResults(results2);
       }
       return;
@@ -1341,7 +1344,7 @@ EXAMPLES:
       }
 
       const { resolveSkillId } = await import("./common/resolve-id.js");
-      const fullId = resolveSkillId(skillId);
+      const fullId = await resolveSkillId(skillId);
       if (!fullId) {
         console.log(`[ERROR] Skill not found: ${skillId}`);
         return;
@@ -1349,8 +1352,9 @@ EXAMPLES:
 
       console.log(`[TRAENUPI] Auto-improving skill ${fullId.substring(0, 8)}...`);
 
-      const output = psqlQuery(
-        `SELECT name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE id = '${fullId}';`,
+      const output = await querySafeText(
+        "SELECT name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE id = $1",
+        [fullId],
         { silent: true }
       );
 
@@ -1389,7 +1393,7 @@ EXAMPLES:
         const phrases = generateTriggerPhrases(skill);
         if (phrases.length > 0) {
           const phrasesSql = `{${phrases.map(p => `"${p}"`).join(",")}}`;
-          psqlExec(`UPDATE skills SET trigger_phrases = '${phrasesSql}' WHERE id = '${fullId}';`, { silent: true });
+          await execSafe("UPDATE skills SET trigger_phrases = $1 WHERE id = $2", [phrasesSql, fullId], { silent: true });
           console.log(`   ✅ Generated ${phrases.length} trigger phrases: ${phrases.slice(0, 5).join(", ")}${phrases.length > 5 ? "..." : ""}`);
           improvements++;
         }
@@ -1398,7 +1402,7 @@ EXAMPLES:
       if (gaps.some(g => g.field === "tags") && skill.trigger_phrases) {
         const tags = [...new Set([...(skill.trigger_phrases ?? []), ...skill.name.split(/[-_]/)])];
         const tagsSql = `{${tags.map(t => `"${t}"`).join(",")}}`;
-        psqlExec(`UPDATE skills SET tags = '${tagsSql}' WHERE id = '${fullId}';`, { silent: true });
+        await execSafe("UPDATE skills SET tags = $1 WHERE id = $2", [tagsSql, fullId], { silent: true });
         console.log(`   ✅ Generated ${tags.length} tags from trigger phrases`);
         improvements++;
       }
@@ -1442,7 +1446,7 @@ EXAMPLES:
 
         console.log(`📊 Settings: threshold=${threshold}%, limit=${limit}, dryRun=${dryRun}\n`);
 
-        const allSkills = scanSkills();
+        const allSkills = await scanSkills();
         const toImprove = filterSkillsForBatch(allSkills, { threshold, limit });
 
         if (toImprove.length === 0) {
@@ -1482,7 +1486,7 @@ EXAMPLES:
           try {
             const { askPi } = await import("./trae/baby-ai.js");
             const history: ConversationItem[] = [];
-            const response = askPi(prompt, history, true, false);
+            const response = await askPi(prompt, history, true, false);
 
             if (response.startsWith("[Error") || response.startsWith("[Pi timed out")) {
               console.log(`   ❌ Failed: ${response}`);
@@ -1499,7 +1503,7 @@ EXAMPLES:
             }
 
             const improvement = parseSkillImprovementResponse(response);
-            const applied = applySkillImprovement(skillId, improvement);
+            const applied = await applySkillImprovement(skillId, improvement);
 
             if (applied) {
               const fields: string[] = [];
@@ -1577,7 +1581,7 @@ EXAMPLES:
       }
 
       const { resolveSkillId } = await import("./common/resolve-id.js");
-      const fullId = resolveSkillId(skillId);
+      const fullId = await resolveSkillId(skillId);
       if (!fullId) {
         console.log(`[ERROR] Skill not found: ${skillId}`);
         return;
@@ -1585,8 +1589,9 @@ EXAMPLES:
 
       console.log(`[TRAENUPI] 🤖 AI-improving skill ${fullId.substring(0, 8)}...`);
 
-      const output = psqlQuery(
-        `SELECT name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE id = '${fullId}';`,
+      const output = await querySafeText(
+        "SELECT name, description, trigger_phrases, anti_patterns, quick_start, examples, content, instructions, category, tags FROM skills WHERE id = $1",
+        [fullId],
         { silent: true }
       );
 
@@ -1633,7 +1638,7 @@ EXAMPLES:
       try {
         const { askPi } = await import("./trae/baby-ai.js");
         const history: ConversationItem[] = [];
-        const response = askPi(prompt, history, true, false);
+        const response = await askPi(prompt, history, true, false);
 
         if (response.startsWith("[Error") || response.startsWith("[Pi timed out")) {
           console.log(`   ❌ Baby AI failed: ${response}`);
@@ -1641,7 +1646,7 @@ EXAMPLES:
         }
 
         const improvement = parseSkillImprovementResponse(response);
-        const applied = applySkillImprovement(fullId, improvement);
+        const applied = await applySkillImprovement(fullId, improvement);
 
         if (applied) {
           const appliedFields: string[] = [];
@@ -1701,7 +1706,7 @@ EXAMPLES:
     
     // Knowledge stored today
     try {
-      const knowledgeToday = psqlQuery(`SELECT COUNT(*) FROM memory WHERE source = 'traenupi' AND created_at::date = '${today}';`).trim();
+      const knowledgeToday = (await querySafeText("SELECT COUNT(*) FROM memory WHERE source = 'traenupi' AND created_at::date = $1", [today])).trim();
       console.log(`📚 Knowledge stored: ${knowledgeToday}`);
     } catch {
       console.log("📚 Knowledge stored: 0");
@@ -1709,7 +1714,7 @@ EXAMPLES:
     
     // Meeting opinions today
     try {
-      const opinionsToday = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE created_at::date = '${today}';`).trim();
+      const opinionsToday = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE created_at::date = $1", [today])).trim();
       console.log(`🗣️ Meeting opinions: ${opinionsToday}`);
     } catch {
       console.log("🗣️ Meeting opinions: 0");
@@ -1717,7 +1722,7 @@ EXAMPLES:
     
     // Baby AI contributions today
     try {
-      const babyAiToday = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE author LIKE 'baby-ai-%' AND created_at::date = '${today}';`).trim();
+      const babyAiToday = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE author LIKE 'baby-ai-%' AND created_at::date = $1", [today])).trim();
       console.log(`👶 Baby AI contributions: ${babyAiToday}`);
     } catch {
       console.log("👶 Baby AI contributions: 0");
@@ -1780,17 +1785,18 @@ EXAMPLES:
     }
     
     console.log("\n[2/4] Loading knowledge from Nezha DB...");
-    const knowledge = loadKnowledge();
+    const knowledge = await loadKnowledge();
     console.log("[KNOWLEDGE] " + knowledge.length + " entries loaded");
     
     console.log("\n[3/5] Checking tasks...");
-    const taskCount = getKnowledgeByCategory("task").length;
+    const taskCount = (await getKnowledgeByCategory("task")).length;
     console.log("[TASKS] " + taskCount + " task entries found");
     
     console.log("\n[4/5] Checking pending inter-reviews...");
     try {
-      const pendingReviews = psqlQuery(
-        "SELECT id, task_id, reviewer_id, requested_at, commit_hash FROM inter_reviews WHERE status = 'pending' ORDER BY requested_at DESC LIMIT 5;",
+      const pendingReviews = await querySafeText(
+        "SELECT id, task_id, reviewer_id, requested_at, commit_hash FROM inter_reviews WHERE status = 'pending' ORDER BY requested_at DESC LIMIT 5",
+        [],
         { silent: true }
       );
       if (pendingReviews && pendingReviews.trim()) {
@@ -1819,7 +1825,7 @@ EXAMPLES:
     
     console.log("\n[5/5] Asking baby AI for context...");
     console.log("──────────────────────────────────────────────────");
-    tellmeSync("I'm a new session. What should I work on?");
+    await tellmeSync("I'm a new session. What should I work on?");
     return;
   }
   
@@ -1835,8 +1841,9 @@ EXAMPLES:
     console.log("╚════════════════════════════════════════════╝\n");
     
     try {
-      const pendingReviews = psqlQuery(
-        "SELECT id, task_id, reviewer_id, requested_at, commit_hash, review_context FROM inter_reviews WHERE status = 'pending' ORDER BY requested_at DESC;",
+      const pendingReviews = await querySafeText(
+        "SELECT id, task_id, reviewer_id, requested_at, commit_hash, review_context FROM inter_reviews WHERE status = 'pending' ORDER BY requested_at DESC",
+        [],
         { silent: true }
       );
       
@@ -1895,7 +1902,7 @@ EXAMPLES:
       process.exit(1);
     }
     
-    const result = resolveId(reviewId, "inter_review" as EntityType);
+    const result = await resolveId(reviewId, "inter_review" as EntityType);
     const fullReviewId = result?.id ?? null;
     if (!fullReviewId) {
       console.log(`[ERROR] Review not found: ${reviewId}`);
@@ -1903,8 +1910,9 @@ EXAMPLES:
     }
     
     try {
-      const reviewData = psqlQuery(
-        `SELECT id, task_id, reviewer_id, requested_at, commit_hash, review_context, status FROM inter_reviews WHERE id = '${fullReviewId}';`,
+      const reviewData = await querySafeText(
+        "SELECT id, task_id, reviewer_id, requested_at, commit_hash, review_context, status FROM inter_reviews WHERE id = $1",
+        [fullReviewId],
         { silent: true }
       );
       
@@ -1930,8 +1938,9 @@ EXAMPLES:
         }
         
         const agentId = getAgentId();
-        psqlExec(
-          `UPDATE inter_reviews SET status='completed', summary='${summary.replace(/'/g, "''")}', reviewed_by='${agentId}', completed_at=NOW() WHERE id='${id}';`
+        await execSafe(
+          "UPDATE inter_reviews SET status='completed', summary=$1, reviewed_by=$2, completed_at=NOW() WHERE id=$3",
+          [summary, agentId, id]
         );
         console.log(`✅ Review completed: ${id}`);
         console.log(`   Summary: ${summary}`);
@@ -2006,14 +2015,14 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
         return;
       }
       
-      const lastOpinion = psqlQuery(`SELECT id, author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;`).trim();
+      const lastOpinion = (await querySafeText("SELECT id, author, perspective FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at DESC LIMIT 1", [fullId])).trim();
       
       if (!lastOpinion) {
         console.log("[ERROR] No opinions in this meeting.");
@@ -2023,7 +2032,7 @@ EXAMPLES:
       const parts = lastOpinion.split("|");
       const opinionId = parts[0];
       
-      addBookmark(fullId, opinionId, note);
+      await addBookmark(fullId, opinionId, note);
       return;
     }
     
@@ -2050,7 +2059,7 @@ EXAMPLES:
     
     if (!subCommand || subCommand === "list") {
       console.log("[TRAENUPI] Active Meetings\n");
-      const output = psqlQuery("SELECT id, topic, status, created_by FROM meetings WHERE status = 'active' ORDER BY created_at DESC LIMIT 10;");
+      const output = await querySafeText("SELECT id, topic, status, created_by FROM meetings WHERE status = 'active' ORDER BY created_at DESC LIMIT 10");
       if (output.trim()) {
         output.trim().split("\n").forEach(line => {
           const parts = line.split("|");
@@ -2074,7 +2083,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2083,7 +2092,7 @@ EXAMPLES:
       
       console.log(`[TRAENUPI] Meeting: ${fullId.substring(0, 8)}\n`);
       
-      const opinions = psqlQuery(`SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;`);
+      const opinions = await querySafeText("SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at", [fullId]);
       
       if (opinions.trim()) {
         opinions.trim().split("\n").forEach((line, idx) => {
@@ -2113,7 +2122,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2153,7 +2162,7 @@ EXAMPLES:
       
       const agentId = getAgentId();
 
-      addOpinion(fullId, agentId, message, position);
+      await addOpinion(fullId, agentId, message, position);
 
       console.log(`[TRAENUPI] Opinion added to meeting ${fullId.substring(0, 8)}`);
       return;
@@ -2168,7 +2177,7 @@ EXAMPLES:
         return;
       }
       
-      const opinionData = psqlQuery(`SELECT meeting_id, author FROM meeting_opinions WHERE id = '${opinionId}';`).trim();
+      const opinionData = (await querySafeText("SELECT meeting_id, author FROM meeting_opinions WHERE id = $1", [opinionId])).trim();
       
       if (!opinionData) {
         console.log("[ERROR] Opinion not found.");
@@ -2181,7 +2190,7 @@ EXAMPLES:
 
       const replyMessage = `@${originalAuthor.substring(0, 15)} ${message}`;
 
-      addOpinion(meetingId, agentId, replyMessage);
+      await addOpinion(meetingId, agentId, replyMessage);
 
       console.log(`[TRAENUPI] Reply added to meeting ${meetingId.substring(0, 8)}`);
       console.log(`   Replying to: ${originalAuthor}`);
@@ -2196,7 +2205,7 @@ EXAMPLES:
         return;
       }
       
-      const opinionData = psqlQuery(`SELECT meeting_id, author, perspective, created_at FROM meeting_opinions WHERE id = '${opinionId}';`).trim();
+      const opinionData = (await querySafeText("SELECT meeting_id, author, perspective, created_at FROM meeting_opinions WHERE id = $1", [opinionId])).trim();
       
       if (!opinionData) {
         console.log("[ERROR] Opinion not found.");
@@ -2216,7 +2225,7 @@ EXAMPLES:
       console.log(`   Time: ${date}`);
       console.log(`   Message: "${perspective}"\n`);
       
-      const replies = psqlQuery(`SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${meetingId}' AND perspective LIKE '@${author.substring(0, 15)}%' ORDER BY created_at;`).trim();
+      const replies = (await querySafeText("SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = $1 AND perspective LIKE $2 ORDER BY created_at", [meetingId, `@${author.substring(0, 15)}%`])).trim();
       
       if (replies) {
         console.log(`💬 Replies:\n`);
@@ -2246,14 +2255,14 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
         return;
       }
       
-      const meetingInfo = psqlQuery(`SELECT topic FROM meetings WHERE id = '${fullId}';`).trim();
+      const meetingInfo = (await querySafeText("SELECT topic FROM meetings WHERE id = $1", [fullId])).trim();
       
       console.log(`\n╔════════════════════════════════════════════╗`);
       console.log(`║  💬 ${meetingInfo.substring(0, 32).padEnd(32)}  ║`);
@@ -2262,7 +2271,7 @@ EXAMPLES:
       console.log("Press Ctrl+C to stop.\n");
       console.log("──────────────────────────────────────────────────\n");
       
-      const existingOpinions = psqlQuery(`SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC;`);
+      const existingOpinions = await querySafeText("SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at ASC", [fullId]);
       
       let lastCount = 0;
       existingOpinions.trim().split("\n").forEach(line => {
@@ -2277,10 +2286,10 @@ EXAMPLES:
       });
       
       while (true) {
-        const count = parseInt(psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim() || "0");
+        const count = parseInt((await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1", [fullId])).trim() || "0");
         
         if (count > lastCount) {
-          const newOpinions = psqlQuery(`SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC OFFSET ${lastCount};`);
+          const newOpinions = await querySafeText("SELECT id, author, perspective, created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at ASC OFFSET $2", [fullId, lastCount]);
           
           newOpinions.trim().split("\n").forEach(line => {
             const parts = line.split("|");
@@ -2314,7 +2323,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2408,7 +2417,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2419,23 +2428,23 @@ EXAMPLES:
       console.log(`║     Meeting Statistics                     ║`);
       console.log(`╚════════════════════════════════════════════╝\n`);
       
-      const totalOpinions = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
+      const totalOpinions = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1", [fullId])).trim();
       
-      const totalParticipants = psqlQuery(`SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
+      const totalParticipants = (await querySafeText("SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = $1", [fullId])).trim();
       
-      const supports = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';`).trim();
+      const supports = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1 AND position = 'support'", [fullId])).trim();
       
-      const opposes = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';`).trim();
+      const opposes = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1 AND position = 'oppose'", [fullId])).trim();
       
-      const neutrals = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';`).trim();
+      const neutrals = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1 AND position = 'neutral'", [fullId])).trim();
       
-      const babyAiCount = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND author LIKE 'baby-ai-%';`).trim();
+      const babyAiCount = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1 AND author LIKE 'baby-ai-%'", [fullId])).trim();
       
-      const firstOpinion = psqlQuery(`SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC LIMIT 1;`).trim();
+      const firstOpinion = (await querySafeText("SELECT created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at ASC LIMIT 1", [fullId])).trim();
       
-      const lastOpinion = psqlQuery(`SELECT created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;`).trim();
+      const lastOpinion = (await querySafeText("SELECT created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at DESC LIMIT 1", [fullId])).trim();
       
-      const avgLength = psqlQuery(`SELECT AVG(LENGTH(perspective))::int FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
+      const avgLength = (await querySafeText("SELECT AVG(LENGTH(perspective))::int FROM meeting_opinions WHERE meeting_id = $1", [fullId])).trim();
       
       console.log(`📊 Total opinions: ${totalOpinions}`);
       console.log(`👥 Total participants: ${totalParticipants}`);
@@ -2470,7 +2479,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2489,7 +2498,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2508,18 +2517,18 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
         return;
       }
       
-      const meetingInfo = psqlQuery(`SELECT topic, created_by, created_at FROM meetings WHERE id = '${fullId}';`).trim();
+      const meetingInfo = (await querySafeText("SELECT topic, created_by, created_at FROM meetings WHERE id = $1", [fullId])).trim();
       
       const [topic, createdBy, createdAt] = meetingInfo.split("|");
       
-      const opinions = psqlQuery(`SELECT author, perspective, position, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at ASC;`).trim();
+      const opinions = (await querySafeText("SELECT author, perspective, position, created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at ASC", [fullId])).trim();
       
       const lines = opinions.split("\n");
       const date = new Date().toISOString().split("T")[0];
@@ -2566,7 +2575,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2575,7 +2584,7 @@ EXAMPLES:
       
       console.log(`[TRAENUPI] Timeline for meeting ${fullId.substring(0, 8)} (last ${limit} opinions):\n`);
       
-      const timeline = psqlQuery(`SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT ${limit};`).trim();
+      const timeline = (await querySafeText("SELECT author, perspective, created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at DESC LIMIT $2", [fullId, limit])).trim();
       
       if (!timeline) {
         console.log("No opinions yet.");
@@ -2613,7 +2622,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2622,7 +2631,11 @@ EXAMPLES:
       
       console.log(`[TRAENUPI] Searching for "${searchTerm}" in meeting ${fullId.substring(0, 8)}...\n`);
       
-      const results = psqlQuery(`SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' AND perspective ILIKE '%${searchTerm}%';`).trim();
+      const searchRows = await querySafe<{ author: string; perspective: string }>(
+        "SELECT author, perspective FROM meeting_opinions WHERE meeting_id = $1 AND perspective ILIKE $2",
+        [fullId, `%${searchTerm}%`]
+      );
+      const results = searchRows.map(r => `${r.author}|${r.perspective}`).join("\n");
       
       if (!results) {
         console.log("No matching opinions found.");
@@ -2651,7 +2664,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2660,7 +2673,7 @@ EXAMPLES:
       
       console.log(`[TRAENUPI] Participants in meeting ${fullId.substring(0, 8)}:\n`);
       
-      const participants = psqlQuery(`SELECT author, COUNT(*) as count FROM meeting_opinions WHERE meeting_id = '${fullId}' GROUP BY author ORDER BY count DESC;`).trim();
+      const participants = (await querySafeText("SELECT author, COUNT(*) as count FROM meeting_opinions WHERE meeting_id = $1 GROUP BY author ORDER BY count DESC", [fullId])).trim();
       
       if (!participants) {
         console.log("No participants yet.");
@@ -2691,14 +2704,14 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
         return;
       }
       
-      const meetingInfo = psqlQuery(`SELECT topic, created_by, created_at, status FROM meetings WHERE id = '${fullId}';`).trim();
+      const meetingInfo = (await querySafeText("SELECT topic, created_by, created_at, status FROM meetings WHERE id = $1", [fullId])).trim();
       
       const [topic, createdBy, createdAt, status] = meetingInfo.split("|");
       
@@ -2711,25 +2724,25 @@ EXAMPLES:
       console.log(`📅 Created: ${createdAt}`);
       console.log(`📊 Status: ${status || 'active'}`);
       
-      const opinionCount = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
+      const opinionCount = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1", [fullId])).trim();
       
-      const participantCount = psqlQuery(`SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = '${fullId}';`).trim();
+      const participantCount = (await querySafeText("SELECT COUNT(DISTINCT author) FROM meeting_opinions WHERE meeting_id = $1", [fullId])).trim();
       
       console.log(`👥 Participants: ${participantCount}`);
       console.log(`📝 Opinions: ${opinionCount}`);
       
-      const supports = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'support';`).trim();
+      const supports = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1 AND position = 'support'", [fullId])).trim();
       
-      const opposes = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'oppose';`).trim();
+      const opposes = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1 AND position = 'oppose'", [fullId])).trim();
       
-      const neutrals = psqlQuery(`SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = '${fullId}' AND position = 'neutral';`).trim();
+      const neutrals = (await querySafeText("SELECT COUNT(*) FROM meeting_opinions WHERE meeting_id = $1 AND position = 'neutral'", [fullId])).trim();
       
       console.log(`\n📊 Positions:`);
       console.log(`   ✅ Support: ${supports}`);
       console.log(`   ❌ Oppose: ${opposes}`);
       console.log(`   ⚪ Neutral: ${neutrals}`);
       
-      const lastOpinion = psqlQuery(`SELECT author, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at DESC LIMIT 1;`).trim();
+      const lastOpinion = (await querySafeText("SELECT author, perspective FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at DESC LIMIT 1", [fullId])).trim();
       
       if (lastOpinion) {
         const [author, perspective] = lastOpinion.split("|");
@@ -2749,14 +2762,14 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
         return;
       }
       
-      psqlExec(`UPDATE meetings SET status = 'closed', updated_at = NOW() WHERE id = '${fullId}';`);
+      await execSafe("UPDATE meetings SET status = 'closed', updated_at = NOW() WHERE id = $1", [fullId]);
       
       console.log(`[TRAENUPI] Meeting ${fullId.substring(0, 8)} has been closed.`);
       return;
@@ -2769,7 +2782,7 @@ EXAMPLES:
         return;
       }
       
-      const fullId = resolveMeetingId(meetingId);
+      const fullId = await resolveMeetingId(meetingId);
       
       if (!fullId) {
         console.log("[ERROR] Meeting not found.");
@@ -2778,7 +2791,7 @@ EXAMPLES:
       
       console.log(`[TRAENUPI] Analyzing consensus for meeting ${fullId.substring(0, 8)}...\n`);
       
-      const opinions = psqlQuery(`SELECT author, position, perspective FROM meeting_opinions WHERE meeting_id = '${fullId}' ORDER BY created_at;`);
+      const opinions = await querySafeText("SELECT author, position, perspective FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at", [fullId]);
       
       const lines = opinions.trim().split("\n").filter((l: string) => l);
       const supports = lines.filter((l: string) => l.split("|")[1] === "support").length;
@@ -2851,7 +2864,7 @@ EXAMPLES:
     }
 
     if (!entityTypeArg || entityTypeArg === "auto") {
-      const result = detectEntityType(shortId);
+      const result = await detectEntityType(shortId);
       if (!result) {
         console.log(`[TRAENUPI] No match found for "${shortId}" in any table.`);
         return;
@@ -2863,7 +2876,7 @@ EXAMPLES:
       return;
     }
 
-    const result = resolveId(shortId, entityTypeArg, { allowAmbiguous: true });
+    const result = await resolveId(shortId, entityTypeArg, { allowAmbiguous: true });
     if (!result) {
       console.log(`[TRAENUPI] No match found for "${shortId}" in ${entityTypeArg} table.`);
       return;

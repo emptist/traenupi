@@ -243,7 +243,7 @@ export async function askPiAsync(
 
   try {
     const agent = getPiAgent();
-    const context = quick ? buildQuickContext(history, question) : buildContext(history, question);
+    const context = quick ? await buildQuickContext(history, question) : await buildContext(history, question);
     
     const messages: PiAgentMessage[] = [
       { role: "system", content: context },
@@ -294,9 +294,9 @@ export async function askPiAsync(
  * console.log(response);
  * ```
  */
-export function askPi(question: string, history: ConversationItem[], quick: boolean = false, useSession: boolean = false): string {
+export async function askPi(question: string, history: ConversationItem[], quick: boolean = false, useSession: boolean = false): Promise<string> {
   try {
-    const context = quick ? buildQuickContext(history, question) : buildContext(history, question);
+    const context = quick ? await buildQuickContext(history, question) : await buildContext(history, question);
     const fullPrompt = `${context}\n\nQuestion: ${question}`;
 
     const args = [...PI_FLAGS];
@@ -395,7 +395,7 @@ const RETRY_CONFIG: RetryConfig = {
  * tellmeSync("What is the meaning of life?", false, false);
  * ```
  */
-export function tellmeSync(question: string, quick: boolean = false, useSession: boolean = false): void {
+export async function tellmeSync(question: string, quick: boolean = false, useSession: boolean = false): Promise<void> {
   ensureDir();
   const history = loadHistory();
 
@@ -404,8 +404,8 @@ export function tellmeSync(question: string, quick: boolean = false, useSession:
   console.log("─".repeat(50));
 
   try {
-    const result = withRetrySync(
-      () => askPi(question, history, quick, useSession),
+    const result = await withRetry(
+      async () => await askPi(question, history, quick, useSession),
       RETRY_CONFIG
     );
 
@@ -470,10 +470,10 @@ export async function tellmeAsync(question: string, quick: boolean = false): Pro
  * // Silently saves response to history
  * ```
  */
-export function tellmeDaemon(question: string): void {
+export async function tellmeDaemon(question: string): Promise<void> {
   ensureDir();
   const history = loadHistory();
-  const answer = askPi(question, history, false, false);
+  const answer = await askPi(question, history, false, false);
   history.push({ question, answer, time: Date.now() });
   saveHistory(history);
 }

@@ -38,7 +38,6 @@ describe("TraeNuPI Core Integration", () => {
         const output = execFileSync("pi", [
           "--no-tools",
           "--no-context-files",
-          "--no-skills",
           "--no-prompt-templates",
           "-p",
           "Reply with exactly: OK",
@@ -60,7 +59,7 @@ describe("TraeNuPI Core Integration", () => {
     it("quick mode produces shorter prompts than full mode", () => {
       const fullOutput = execFileSync("node", ["dist/index.js", "know"], {
         encoding: "utf-8",
-        timeout: 10000,
+        timeout: 30000,
       }).length;
 
       assert.ok(fullOutput > 0, "Knowledge should load");

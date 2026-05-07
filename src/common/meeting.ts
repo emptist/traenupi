@@ -1,12 +1,14 @@
-import { psqlQuery, psqlExec, resolveMeetingId } from "./db.js";
+import { resolveMeetingId } from "./db.js";
+import { querySafeText, execSafe, queryOne } from "./db-safe.js";
 import type { MeetingOpinion, Meeting } from "./types.js";
 
-export function getMeetingInfo(meetingId: string): Meeting | null {
-  const resolvedId = resolveMeetingId(meetingId);
+export async function getMeetingInfo(meetingId: string): Promise<Meeting | null> {
+  const resolvedId = await resolveMeetingId(meetingId);
   if (!resolvedId) return null;
 
-  const output = psqlQuery(
-    `SELECT id, topic, status, created_by, created_at FROM meetings WHERE id = '${resolvedId}';`
+  const output = await querySafeText(
+    "SELECT id, topic, status, created_by, created_at FROM meetings WHERE id = $1",
+    [resolvedId]
   );
   if (!output) return null;
 
@@ -20,9 +22,9 @@ export function getMeetingInfo(meetingId: string): Meeting | null {
   };
 }
 
-export function getActiveMeetings(): Meeting[] {
-  const output = psqlQuery(
-    "SELECT id, topic, status, created_by, created_at FROM meetings WHERE status = 'active' ORDER BY created_at DESC;"
+export async function getActiveMeetings(): Promise<Meeting[]> {
+  const output = await querySafeText(
+    "SELECT id, topic, status, created_by, created_at FROM meetings WHERE status = 'active' ORDER BY created_at DESC"
   );
   if (!output) return [];
 
@@ -38,12 +40,13 @@ export function getActiveMeetings(): Meeting[] {
   });
 }
 
-export function getMeetingOpinions(meetingId: string): MeetingOpinion[] {
-  const resolvedId = resolveMeetingId(meetingId);
+export async function getMeetingOpinions(meetingId: string): Promise<MeetingOpinion[]> {
+  const resolvedId = await resolveMeetingId(meetingId);
   if (!resolvedId) return [];
 
-  const output = psqlQuery(
-    `SELECT id, meeting_id, author, perspective, position, created_at FROM meeting_opinions WHERE meeting_id = '${resolvedId}' ORDER BY created_at ASC;`
+  const output = await querySafeText(
+    "SELECT id, meeting_id, author, perspective, position, created_at FROM meeting_opinions WHERE meeting_id = $1 ORDER BY created_at ASC",
+    [resolvedId]
   );
   if (!output) return [];
 
@@ -60,48 +63,49 @@ export function getMeetingOpinions(meetingId: string): MeetingOpinion[] {
   });
 }
 
-export function addOpinion(
+export async function addOpinion(
   meetingId: string, 
   author: string, 
   message: string, 
   position: string = "support"
-): boolean {
-  const resolvedId = resolveMeetingId(meetingId);
+): Promise<boolean> {
+  const resolvedId = await resolveMeetingId(meetingId);
   if (!resolvedId) return false;
 
-  const safeMessage = message.replace(/'/g, "''");
   const validPosition = ["support", "oppose", "neutral"].includes(position) ? position : "support";
   
-  return psqlExec(
-    `INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ('${resolvedId}', '${author}', '${safeMessage}', '${validPosition}');`
+  return execSafe(
+    "INSERT INTO meeting_opinions (meeting_id, author, perspective, position) VALUES ($1, $2, $3, $4)",
+    [resolvedId, author, message, validPosition]
   );
 }
 
-export function createMeeting(topic: string, author: string): string | null {
-  const safeTopic = topic.replace(/'/g, "''");
-  const result = psqlQuery(
-    `INSERT INTO meetings (topic, created_by, status) VALUES ('${safeTopic}', '${author}', 'active') RETURNING id;`
+export async function createMeeting(topic: string, author: string): Promise<string | null> {
+  const row = await queryOne<{ id: string }>(
+    "INSERT INTO meetings (topic, created_by, status) VALUES ($1, $2, 'active') RETURNING id",
+    [topic, author]
   );
-  return result || null;
+  return row?.id || null;
 }
 
-export function closeMeeting(meetingId: string): boolean {
-  const resolvedId = resolveMeetingId(meetingId);
+export async function closeMeeting(meetingId: string): Promise<boolean> {
+  const resolvedId = await resolveMeetingId(meetingId);
   if (!resolvedId) return false;
 
-  return psqlExec(
-    `UPDATE meetings SET status = 'closed', updated_at = NOW() WHERE id = '${resolvedId}';`
+  return execSafe(
+    "UPDATE meetings SET status = 'closed', updated_at = NOW() WHERE id = $1",
+    [resolvedId]
   );
 }
 
-export function getMeetingStats(): { total: number; active: number; opinions: number } {
-  const totalResult = psqlQuery("SELECT COUNT(*) FROM meetings;");
-  const activeResult = psqlQuery("SELECT COUNT(*) FROM meetings WHERE status = 'active';");
-  const opinionsResult = psqlQuery("SELECT COUNT(*) FROM meeting_opinions;");
+export async function getMeetingStats(): Promise<{ total: number; active: number; opinions: number }> {
+  const totalRow = await queryOne<{ count: string }>("SELECT COUNT(*) as count FROM meetings");
+  const activeRow = await queryOne<{ count: string }>("SELECT COUNT(*) as count FROM meetings WHERE status = 'active'");
+  const opinionsRow = await queryOne<{ count: string }>("SELECT COUNT(*) as count FROM meeting_opinions");
 
   return {
-    total: parseInt(totalResult) || 0,
-    active: parseInt(activeResult) || 0,
-    opinions: parseInt(opinionsResult) || 0,
+    total: parseInt(totalRow?.count || "0") || 0,
+    active: parseInt(activeRow?.count || "0") || 0,
+    opinions: parseInt(opinionsRow?.count || "0") || 0,
   };
 }

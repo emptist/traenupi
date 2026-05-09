@@ -22,6 +22,7 @@ Completed the first major refactoring following psypi's patterns:
 - `db_types.gleam` - Pure types (DbConfig, DbError, QueryResult)
 - `db_connection.gleam` - Connection management with `with_connection` pattern
 - `task_db.gleam` - Domain-specific DB operations for tasks
+- `meeting_db.gleam` - Domain-specific DB operations for meetings
 
 **Security Improvements:**
 - ✅ Removed SQL injection vectors from string interpolation
@@ -35,7 +36,7 @@ Completed the first major refactoring following psypi's patterns:
 - ✅ Domain modules now own their SQL queries (no generic ORM layer)
 
 **What's Left:**
-- [ ] Create meeting_db.gleam with decoder pattern
+- [ ] Write tests for task_db.gleam and meeting_db.gleam
 - [ ] Migrate remaining domain modules to use task_db.gleam pattern
 - [ ] Consider adopting `node_pg` package to replace custom db_ffi.mjs
 - [ ] Update TypeScript code to use new Gleam DB modules

@@ -3204,15 +3204,15 @@ pub fn knowledge_get_all_categories_test() {
 }
 
 import traenupi_core/reflection.{
-  new_reflection, with_task, with_learning, with_issue, with_suggestion,
-  with_praise, with_scores, with_type, with_sentiment,
-  new_store, store_reflection, get_reflection, get_all_reflections,
+  new_reflection, with_task, with_learning, with_issue,
+  with_scores, with_type,
+  new_store, store_reflection, get_reflection,
   get_reflections_by_agent, get_reflections_by_type, count_reflections,
   reflection_type_to_string, reflection_type_from_string,
   sentiment_to_string, sentiment_from_string,
   severity_to_string, severity_from_string,
-  TaskCompletion, CodeReview, LearningReflection, IssueReflection, Improvement, Question,
-  Positive, Negative, Neutral, Mixed,
+  TaskCompletion, CodeReview, LearningReflection,
+  Positive, Negative, Neutral,
   Critical, High, Medium, Low,
 }
 
@@ -3340,9 +3340,9 @@ pub fn reflection_get_by_agent_test() {
 
 pub fn reflection_get_by_type_test() {
   let store = new_store()
-  let r1 = new_reflection("Test 1", "agent-1") |> with_type(_, TaskCompletion)
-  let r2 = new_reflection("Test 2", "agent-1") |> with_type(_, CodeReview)
-  let r3 = new_reflection("Test 3", "agent-1") |> with_type(_, TaskCompletion)
+  let r1 = new_reflection("Test 1", "agent-1") |> with_type(TaskCompletion)
+  let r2 = new_reflection("Test 2", "agent-1") |> with_type(CodeReview)
+  let r3 = new_reflection("Test 3", "agent-1") |> with_type(TaskCompletion)
   
   let store = store_reflection(store, r1)
   let store = store_reflection(store, r2)
@@ -3356,10 +3356,10 @@ pub fn reflection_get_by_type_test() {
 }
 
 import traenupi_core/event_bus.{
-  new_bus, subscribe, unsubscribe, publish, get_history, get_subscriptions,
+  new_bus, subscribe, unsubscribe, publish, get_history,
   get_subscription_count, clear, clear_history,
   event_type_to_string, event_type_from_string, event_to_json,
-  TaskStarted, TaskCompleted, TaskFailed, TaskRetry,
+  TaskStarted, TaskCompleted, TaskFailed, TaskRetry, CustomEvent,
 }
 
 pub fn event_bus_new_test() {
@@ -3457,7 +3457,7 @@ pub fn event_to_json_test() {
 import traenupi_core/identity.{
   new_context, with_project, with_source, with_session, with_inner,
   generate_semantic_id, create_identity,
-  new_store as new_identity_store, store_identity, get_identity, list_identities,
+  new_store as new_identity_store, store_identity, get_identity,
   get_identities_by_project, count_identities,
   source_to_string, source_from_string,
   parse_identity_id, is_session_identity, is_global_identity, is_inner_identity,

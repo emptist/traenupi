@@ -1,6 +1,5 @@
 import gleam/dict.{type Dict}
 import gleam/option.{type Option}
-import gleam/list
 import gleam/string
 import gleam/javascript/promise.{type Promise}
 import traenupi_core/db_types.{type Connection, type DbError, type QueryResult}

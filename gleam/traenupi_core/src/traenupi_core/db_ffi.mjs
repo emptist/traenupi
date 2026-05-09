@@ -192,3 +192,27 @@ export function get_env(key) {
   }
   return { type: 'Some', value };
 }
+
+export function cwd() {
+  try {
+    return { type: 'Ok', value: process.cwd() };
+  } catch {
+    return { type: 'Error', value: 'Failed to get current directory' };
+  }
+}
+
+export function run_shell_command(command, args) {
+  return new Promise((resolve) => {
+    try {
+      const { execSync } = require('child_process');
+      const result = execSync(`${command} ${args.join(' ')}`, {
+        encoding: 'utf8',
+        timeout: 5000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      });
+      resolve({ type: 'Ok', value: result });
+    } catch (e) {
+      resolve({ type: 'Error', value: e.message });
+    }
+  });
+}

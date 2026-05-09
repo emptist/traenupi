@@ -29,6 +29,37 @@ This single command:
    meetings)
 ```
 
+## Gleam Migration Goal
+
+**Inspired by psypi (98% Gleam)**, TraeNuPI is migrating to Gleam for type-safe, production-ready code.
+
+### Current Status
+
+| Metric | Current | Target |
+|--------|---------|--------|
+| Gleam files | 239 | ~250 |
+| Gleam LOC | 85,448 | 100,000+ |
+| TypeScript files | 45 | ~5 (FFI only) |
+| Gleam % | ~84% | ~98% |
+
+### Migration Strategy
+
+Following psypi's proven pattern:
+1. Keep `index.ts` as thin wrapper calling Gleam
+2. Move `trae/*.ts` commands to Gleam modules
+3. Use FFI wrappers for Node.js features (fs, http, pg)
+4. Maintain same function/class names for drop-in replacement
+
+### Migration Priority
+
+1. **Phase 1**: `trae/context.ts` → Gleam (core building block)
+2. **Phase 2**: `trae/baby-ai.ts` → Gleam (main AI logic)
+3. **Phase 3**: `trae/meeting-utils.ts` → Gleam
+4. **Phase 4**: `trae/skill-*.ts` → Gleam
+5. **Phase 5**: Other `trae/*.ts` modules
+
+See [GLEAM_MIGRATION.md](./docs/GLEAM_MIGRATION.md) for detailed progress.
+
 ## Commands
 
 ### AI Session Onboarding

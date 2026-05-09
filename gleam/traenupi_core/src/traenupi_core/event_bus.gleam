@@ -1,7 +1,6 @@
 import gleam/option.{type Option, None, Some}
 import gleam/list
 import gleam/dict.{type Dict}
-import gleam/string
 import gleam/int
 
 pub type EventType {

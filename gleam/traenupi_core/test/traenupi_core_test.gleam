@@ -3360,9 +3360,6 @@ import traenupi_core/event_bus.{
   get_subscription_count, clear, clear_history,
   event_type_to_string, event_type_from_string, event_to_json,
   TaskStarted, TaskCompleted, TaskFailed, TaskRetry,
-  SchedulerHeartbeat, SchedulerPaused, SchedulerResumed,
-  AgentRegistered, AgentUnregistered, AgentError,
-  SystemStarted, SystemStopped, HealthCheck, CustomEvent,
 }
 
 pub fn event_bus_new_test() {
@@ -3458,13 +3455,13 @@ pub fn event_to_json_test() {
 }
 
 import traenupi_core/identity.{
-  new_context, with_project, with_git_hash, with_source, with_branch,
-  with_session, with_inner, generate_semantic_id, create_identity,
+  new_context, with_project, with_source, with_session, with_inner,
+  generate_semantic_id, create_identity,
   new_store as new_identity_store, store_identity, get_identity, list_identities,
-  get_identities_by_project, get_identities_by_source, count_identities,
-  source_to_string, source_from_string, identity_to_json,
+  get_identities_by_project, count_identities,
+  source_to_string, source_from_string,
   parse_identity_id, is_session_identity, is_global_identity, is_inner_identity,
-  Nezha, Opencode, Trae, External, Mcp, Unknown as UnknownSource,
+  Nezha, Opencode, Trae, Unknown as UnknownSource,
 }
 
 pub fn identity_new_context_test() {
@@ -3569,9 +3566,9 @@ pub fn identity_store_test() {
 pub fn identity_get_by_project_test() {
   let store = new_identity_store()
   
-  let ctx1 = new_context("/home/user/p1", "fp") |> with_project(_, "project1") |> with_source(_, Nezha)
-  let ctx2 = new_context("/home/user/p2", "fp") |> with_project(_, "project2") |> with_source(_, Nezha)
-  let ctx3 = new_context("/home/user/p1", "fp") |> with_project(_, "project1") |> with_source(_, Trae)
+  let ctx1 = new_context("/home/user/p1", "fp") |> with_project("project1") |> with_source(Nezha)
+  let ctx2 = new_context("/home/user/p2", "fp") |> with_project("project2") |> with_source(Nezha)
+  let ctx3 = new_context("/home/user/p1", "fp") |> with_project("project1") |> with_source(Trae)
   
   let store = store_identity(store, create_identity(ctx1))
   let store = store_identity(store, create_identity(ctx2))

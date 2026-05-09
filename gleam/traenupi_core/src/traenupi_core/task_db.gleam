@@ -1,5 +1,5 @@
 import gleam/javascript/promise.{type Promise, await, resolve}
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import gleam/list
 import gleam/int
 import gleam/string

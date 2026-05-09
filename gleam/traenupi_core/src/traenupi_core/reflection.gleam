@@ -3,7 +3,6 @@ import gleam/list
 import gleam/dict.{type Dict}
 import gleam/string
 import gleam/int
-import gleam/result
 
 pub type ReflectionType {
   TaskCompletion

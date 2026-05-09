@@ -86,19 +86,23 @@ xcom inspire             # Get tweet ideas
 TraeNuPI knows your current working directory and project name.
 It includes this in context for the baby AI.
 
-### Critical: Protect psypi Database - READ ONLY Client
+### Critical: Protect psypi Database - Shared DB Client
 
-TraeNuPI shares the `psypi` PostgreSQL database with other projects. **Always treat it as READ-ONLY**.
+TraeNuPI shares the `psypi` PostgreSQL database with other projects. It is a client, not the owner.
 
-**NEVER do these:**
-- CREATE TABLE, ALTER TABLE, DROP TABLE - Never modify database schema
-- CREATE INDEX, DROP INDEX - Don't create or modify indexes
-- Never assume you own the `skills` table or any other table
+**ALLOWED operations:**
+- SELECT, INSERT, UPDATE, DELETE - Full data access
+- CREATE NEW TABLE - TraeNuPI can create its own tables
 
-**ALLOWED operations (with parameterized queries):**
-- SELECT queries to read data
-- INSERT/UPDATE/DELETE only in tables you create for TraeNuPI (with `source = 'traenupi'` tracking)
-- Use `db-safe.ts` functions (`querySafeText`, `execSafe`) with parameterized queries
+**NEVER do these (breaks others):**
+- ALTER TABLE on existing tables
+- DROP TABLE on existing tables
+- CREATE INDEX / DROP INDEX on shared tables
+
+**Safety requirements:**
+- Use parameterized queries via `db-safe.ts` (`querySafeText`, `execSafe`)
+- Never use string concatenation in SQL
+- Use `source = 'traenupi'` tag for TraeNuPI-owned records
 
 ### Critical: Prevent External Directory Pollution
 

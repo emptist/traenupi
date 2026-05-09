@@ -1,12 +1,11 @@
 import gleam/javascript/promise.{type Promise, await, resolve}
-import gleam/option.{type Option, None, Some}
+import gleam/option.{None, Some}
 import gleam/list
 import gleam/int
-import gleam/string
 import traenupi_core/db
 import traenupi_core/db_types
 import traenupi_core/db_connection
-import traenupi_core/meeting.{type Meeting, type Opinion, type MeetingStatus, type Position}
+import traenupi_core/meeting.{type Meeting, type Opinion, type MeetingStatus}
 
 pub type MeetingDbError {
   ConnectionError(String)

@@ -1305,7 +1305,7 @@ EXAMPLES:
       console.log(`[TRAENUPI] Importing skills from: ${source}`);
       if (options.dryRun) console.log("   (dry-run mode - no changes will be made)");
       
-      const results = importSkillFromSource(source, options);
+      const results = await importSkillFromSource(source, options);
       printImportResults(results);
       return;
     }

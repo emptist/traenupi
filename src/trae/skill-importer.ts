@@ -217,10 +217,10 @@ export function fetchFromGitHubRepo(repoUrl: string): string[] {
   return skills;
 }
 
-export function importSkillFromSource(
+export async function importSkillFromSource(
   source: string,
   options: ImportOptions = {}
-): ImportResult[] {
+): Promise<ImportResult[]> {
   const results: ImportResult[] = [];
   const sourceType = detectSourceType(source);
   

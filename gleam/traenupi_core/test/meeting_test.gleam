@@ -1,7 +1,7 @@
 import gleeunit
 import gleeunit/should
 import gleam/option.{Some, None}
-import traenupi_core/meeting.{type Meeting, type Opinion, type MeetingStatus, type Position, Active, Completed, Cancelled, Support, Oppose, Neutral}
+import traenupi_core/meeting.{Active, Completed, Cancelled, Support, Oppose, Neutral}
 import gleam/dict
 
 pub fn main() {

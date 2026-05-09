@@ -1,8 +1,7 @@
 import gleeunit
 import gleeunit/should
 import gleam/option.{Some, None}
-import traenupi_core/task.{type Task, type TaskStatus, Pending, Running, Completed, Failed}
-import traenupi_core/task_db.{type TaskDbError, ConnectionError, QueryError, NotFound, DecodeError}
+import traenupi_core/task.{Pending, Running, Completed, Failed}
 import gleam/dict
 
 pub fn main() {

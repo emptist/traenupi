@@ -3359,7 +3359,7 @@ import traenupi_core/event_bus.{
   new_bus, subscribe, unsubscribe, publish, get_history,
   get_subscription_count, clear, clear_history,
   event_type_to_string, event_type_from_string, event_to_json,
-  TaskStarted, TaskCompleted, TaskFailed, TaskRetry, CustomEvent,
+  TaskStarted, TaskCompleted, TaskFailed, CustomEvent,
 }
 
 pub fn event_bus_new_test() {

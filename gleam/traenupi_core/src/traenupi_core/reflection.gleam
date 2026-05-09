@@ -3,8 +3,6 @@ import gleam/list
 import gleam/dict.{type Dict}
 import gleam/string
 import gleam/int
-import gleam/result
-import gleam/json
 import traenupi_core/time_utils
 
 pub type ReflectionType {

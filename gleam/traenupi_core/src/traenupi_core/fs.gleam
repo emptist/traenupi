@@ -1,6 +1,7 @@
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/string
+import simplifile
 
 pub type FileError {
   NotFound(path: String)
@@ -245,17 +246,55 @@ pub type WriteFileResult {
   WriteFileError(error: FileError)
 }
 
-@external(javascript, "../fs_ffi.mjs", "readFile")
-pub fn read_file(path: String) -> ReadFileResult
+pub fn read_file(path: String) -> ReadFileResult {
+  case simplifile.read(path) {
+    Ok(content) -> ReadFileOk(content: content)
+    Error(error) -> ReadFileError(error: simplifile_error_to_file_error(error, path))
+  }
+}
 
-@external(javascript, "../fs_ffi.mjs", "writeFile")
-pub fn write_file(path: String, content: String) -> WriteFileResult
+pub fn write_file(path: String, content: String) -> WriteFileResult {
+  case simplifile.write(path, content) {
+    Ok(_) -> WriteFileOk
+    Error(error) -> WriteFileError(error: simplifile_error_to_file_error(error, path))
+  }
+}
 
-@external(javascript, "../fs_ffi.mjs", "exists")
-pub fn exists(path: String) -> Bool
+pub fn exists(path: String) -> Bool {
+  case simplifile.is_file(path) {
+    Ok(True) -> True
+    Error(_) -> {
+      case simplifile.is_directory(path) {
+        Ok(True) -> True
+        _ -> False
+      }
+    }
+    Ok(False) -> {
+      case simplifile.is_directory(path) {
+        Ok(True) -> True
+        _ -> False
+      }
+    }
+  }
+}
 
-@external(javascript, "../fs_ffi.mjs", "deleteFile")
-pub fn delete_file(path: String) -> DeleteResult
+pub fn delete_file(path: String) -> DeleteResult {
+  case simplifile.delete(path) {
+    Ok(_) -> DeleteOk
+    Error(error) -> DeleteError(error: simplifile_error_to_file_error(error, path))
+  }
+}
+
+fn simplifile_error_to_file_error(error: simplifile.FileError, path: String) -> FileError {
+  case error {
+    simplifile.Enoent -> NotFound(path: path)
+    simplifile.Eacces -> PermissionDenied(path: path)
+    simplifile.Eisdir -> IsDirectory(path: path)
+    simplifile.Enotdir -> NotDirectory(path: path)
+    simplifile.Eexist -> AlreadyExists(path: path)
+    _ -> IoError(message: simplifile.describe_error(error))
+  }
+}
 
 pub fn read_file_string(path: String) -> Result(String, FileError) {
   case read_file(path) {

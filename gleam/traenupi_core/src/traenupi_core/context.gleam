@@ -1,6 +1,7 @@
 import gleam/string
 import gleam/list
 import gleam/javascript/promise.{type Promise}
+import traenupi_core/time_utils
 
 pub type Context {
   Context(working_dir: String, project: String, git_branch: String)
@@ -12,8 +13,9 @@ pub fn get_cwd() -> Result(String, String)
 @external(javascript, "./db_ffi.mjs", "run_shell_command")
 pub fn run_shell(command: String, args: List(String)) -> Promise(Result(String, String))
 
-@external(javascript, "./reflection_ffi.mjs", "now")
-pub fn get_timestamp() -> Int
+pub fn get_timestamp() -> Int {
+  time_utils.now()
+}
 
 pub fn get_working_dir() -> String {
   case get_cwd() {

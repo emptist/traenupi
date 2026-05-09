@@ -5,6 +5,7 @@ import gleam/string
 import gleam/int
 import gleam/float
 import gleam/result
+import traenupi_core/time_utils
 
 pub type KnowledgeEntry {
   KnowledgeEntry(
@@ -320,5 +321,6 @@ fn generate_id() -> String {
   int.to_string(now()) <> "-" <> int.to_string(int.random(10000))
 }
 
-@external(javascript, "./knowledge_ffi.mjs", "now")
-fn now() -> Int
+fn now() -> Int {
+  time_utils.now()
+}

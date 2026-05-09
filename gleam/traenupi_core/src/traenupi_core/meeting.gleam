@@ -4,6 +4,7 @@ import gleam/dict.{type Dict}
 import gleam/int
 import gleam/string
 import gleam/result
+import traenupi_core/time_utils
 
 pub type MeetingStatus {
   Active
@@ -315,8 +316,10 @@ fn parse_int(s: String) -> Result(Int, MeetingError) {
   }
 }
 
-@external(javascript, "./meeting_ffi.mjs", "generate_id")
-fn generate_id() -> String
+fn generate_id() -> String {
+  time_utils.generate_id("meeting")
+}
 
-@external(javascript, "./meeting_ffi.mjs", "now")
-fn now() -> Int
+fn now() -> Int {
+  time_utils.now()
+}

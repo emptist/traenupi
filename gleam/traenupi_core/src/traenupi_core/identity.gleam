@@ -3,6 +3,7 @@ import gleam/list
 import gleam/dict.{type Dict}
 import gleam/string
 import gleam/int
+import traenupi_core/time_utils
 
 pub type AgentSource {
   Nezha
@@ -290,5 +291,6 @@ pub fn is_inner_identity(id: String) -> Bool {
   }
 }
 
-@external(javascript, "./identity_ffi.mjs", "now")
-fn now() -> Int
+fn now() -> Int {
+  time_utils.now()
+}

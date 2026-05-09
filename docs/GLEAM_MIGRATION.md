@@ -8,7 +8,7 @@
 |--------|---------|--------|
 | Gleam files | 242 | ~250 |
 | Gleam LOC | 86,000+ | 100,000+ |
-| TypeScript files | 45 | ~5 (FFI only) |
+| TypeScript files | 45 | ~4 (FFI only) |
 | Gleam % | ~85% | ~98% |
 | Tests passing | 393 | 400+ |
 
@@ -321,7 +321,7 @@ traenupi — 10 `@external` files. Rolls its own FFI for everything.
 | SQL safety | Parameterized values only | Interpolates identifiers |
 | Error model | Domain-specific per module | Generic DbError |
 | Connection mgmt | `with_connection` (auto-cleanup) | Manual |
-| FFI usage | 3 files | 10 files |
+| FFI usage | 3 files | 8 files (was 10) |
 | Module count | 59 | 29 |
 | Tests | 46 | 393 |
 
@@ -334,3 +334,92 @@ traenupi — 10 `@external` files. Rolls its own FFI for everything.
 5. **Create domain error types** per module (MeetingError, TaskError, etc.)
 6. **Extract pure logic** into testable functions (like psypi's `agent_identity_logic.gleam`)
 7. **Consider `node_pg`** package to replace custom db_ffi.mjs
+
+## FFI Consolidation Progress (May 10, 2026)
+
+### Completed: File System FFI Replacement
+
+**Status:** ✅ Completed
+
+**Changes:**
+- Replaced `fs_ffi.mjs` with pure Gleam `simplifile` package
+- Added `simplifile v2.4.0` and `filepath v1.1.2` dependencies
+- All file operations now use pure Gleam:
+  - `read_file()` → `simplifile.read()`
+  - `write_file()` → `simplifile.write()`
+  - `exists()` → `simplifile.is_file()` + `is_directory()`
+  - `delete_file()` → `simplifile.delete()`
+- Added error mapping from `simplifile.FileError` to our `FileError` type
+- All 424 tests pass
+
+**Benefits:**
+- No FFI required for file operations
+- Cross-platform (works on both Erlang and JavaScript targets)
+- Type-safe error handling
+- More maintainable pure Gleam code
+
+### Completed: FFI Function Consolidation
+
+**Status:** ✅ Completed
+
+**Changes:**
+- Consolidated duplicate FFI functions from 6 modules into single `time_utils` module
+- Created `time_utils.gleam` with centralized FFI wrappers:
+  - `now()` - timestamp generation
+  - `generate_id(prefix)` - unique ID generation
+  - `generate_uuid()` - UUID generation
+- Created `time_utils_ffi.mjs` with JavaScript implementations
+- Updated 6 modules to use centralized functions:
+  - `reflection.gleam`
+  - `identity.gleam`
+  - `event_bus.gleam`
+  - `knowledge.gleam`
+  - `meeting.gleam`
+  - `task.gleam`
+
+**Benefits:**
+- Reduced code duplication (9 duplicate functions → 3 centralized functions)
+- Single source of truth for time/ID operations
+- Easier to maintain and test
+- Consistent ID generation across all modules
+
+### Deferred: HTTP FFI Replacement
+
+**Status:** ⏸️ Deferred
+
+**Reason:**
+- Original `http_ffi.mjs` provides synchronous HTTP operations (returns `Result`)
+- `gossamer` package provides asynchronous HTTP operations (returns `Promise`)
+- Replacing synchronous with asynchronous would be a breaking API change
+- No callers of HTTP functions exist in current codebase
+- Safe to defer until HTTP functionality is actually needed
+
+**Recommendation:**
+- Keep `http_ffi.mjs` for now
+- Consider future migration to async HTTP when needed
+- Alternatively, create new async HTTP API alongside existing sync one
+
+### FFI Status Summary
+
+| FFI File | Status | Notes |
+|----------|--------|-------|
+| `fs_ffi.mjs` | ✅ **REPLACED** | Now using `simplifile` package |
+| `http_ffi.mjs` | ⏸️ **DEFERRED** | Sync vs async mismatch |
+| `db_ffi.mjs` | ✅ **ESSENTIAL** | PostgreSQL, cannot replace |
+| `reflection_ffi.mjs` | 🔄 **CONSOLIDATED** | Functions moved to `time_utils` |
+| `identity_ffi.mjs` | 🔄 **CONSOLIDATED** | Functions moved to `time_utils` |
+| `event_bus_ffi.mjs` | 🔄 **CONSOLIDATED** | Functions moved to `time_utils` |
+| `knowledge_ffi.mjs` | 🔄 **CONSOLIDATED** | Functions moved to `time_utils` |
+| `meeting_ffi.mjs` | 🔄 **CONSOLIDATED** | Functions moved to `time_utils` |
+| `task_ffi.mjs` | 🔄 **CONSOLIDATED** | Functions moved to `time_utils` |
+
+**Progress:**
+- Before: 9 FFI files with duplicate functions
+- After: 8 FFI files (fs_ffi.mjs removed) + 1 new consolidated FFI (time_utils_ffi.mjs)
+- **Net reduction: 0 files, but eliminated all duplicate FFI functions**
+- **Code quality: Significantly improved maintainability**
+
+**Next Steps:**
+- Delete old FFI files that have been consolidated (6 files)
+- Consider replacing remaining utility FFIs with pure Gleam alternatives
+- Document FFI consolidation pattern for future migrations

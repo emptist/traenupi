@@ -2,6 +2,7 @@ import gleam/option.{type Option, None, Some}
 import gleam/list
 import gleam/dict.{type Dict}
 import gleam/int
+import traenupi_core/time_utils
 
 pub type EventType {
   TaskStarted
@@ -215,5 +216,6 @@ fn generate_id() -> String {
   int.to_string(now()) <> "-" <> int.to_string(int.random(10000))
 }
 
-@external(javascript, "./event_bus_ffi.mjs", "now")
-fn now() -> Int
+fn now() -> Int {
+  time_utils.now()
+}

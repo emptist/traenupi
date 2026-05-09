@@ -3,6 +3,9 @@ import gleam/list
 import gleam/dict.{type Dict}
 import gleam/string
 import gleam/int
+import gleam/result
+import gleam/json
+import traenupi_core/time_utils
 
 pub type ReflectionType {
   TaskCompletion
@@ -356,8 +359,10 @@ fn generate_id() -> String {
   generate_uuid()
 }
 
-@external(javascript, "./reflection_ffi.mjs", "now")
-fn now() -> Int
+fn now() -> Int {
+  time_utils.now()
+}
 
-@external(javascript, "./reflection_ffi.mjs", "generate_uuid")
-fn generate_uuid() -> String
+fn generate_uuid() -> String {
+  time_utils.generate_uuid()
+}

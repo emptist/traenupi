@@ -1,7 +1,7 @@
 # Database Config
 #
 # Database configuration for TraeNuPI. Using PostgreSQL
-# with the nezha database.
+# with the psypi database (shared with other Nezha family projects).
 
 [connections.main]
   # PostgreSQL driver for TraeNuPI

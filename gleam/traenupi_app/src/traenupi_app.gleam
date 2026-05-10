@@ -16,7 +16,7 @@ pub fn main() {
     Some("postgres"),
     Some("localhost"),
     Some(5432),
-    Some("nezha"),
+    Some("psypi"),
   )
   
   http.start_server(3000, db_config)

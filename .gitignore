@@ -11,3 +11,40 @@ meeting-*.md
 gleam/*/build/
 gleam/*/.gleam/
 *.beam
+
+# Security - Secrets & Credentials (NEVER commit these!)
+.env.local
+.env.*.local
+*.env
+!*.env.example
+secrets/
+credentials/
+*api_key*
+*apikey*
+*secret*
+*.key
+*.pem
+*.p12
+*.pfx
+openrouter_key.txt
+traenupi_key.txt
+
+# Keychain access scripts (may contain sensitive logic)
+*keychain*.sh
+*get_key*.sh
+
+# IDE / Editor
+.vscode/settings.json (if contains secrets)
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Debug logs with potential secrets
+*debug*.log
+*traenupi*.log
+
+# Temporary test outputs (might contain AI responses)
+test_output/
+tmp_output/

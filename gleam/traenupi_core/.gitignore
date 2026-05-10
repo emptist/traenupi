@@ -2,3 +2,11 @@
 *.ez
 /build
 erl_crash.dump
+
+# Security - Never commit secrets or test outputs with sensitive data
+*api_key*
+*secret*
+*.key
+test_output/
+tmp_output/
+*_test.log

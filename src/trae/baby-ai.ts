@@ -42,7 +42,7 @@ export interface BabyAiConfig {
 
 const DEFAULT_CONFIG: Required<BabyAiConfig> = {
   apiKey: process.env.OPENROUTER_API_KEY || "",
-  model: "tencent/hy3-preview:free",
+  model: "anthropic/claude-3.5-sonnet",
   systemPrompt: process.env.PI_AGENT_SYSTEM_PROMPT || "You are a helpful AI assistant integrated with TraeNuPI.",
   maxRetries: 3,
   baseDelayMs: 2000,

@@ -1,13 +1,19 @@
 import gleam/io
 import gleam/string
+import gleam/list
 import gleam/option.{None, Some}
+import gleam/javascript/promise.{await, resolve}
 import traenupi_core/cli.{type CliCommand, Help, Version, Status, Tellme, Know, Search, Remind, Review, Tasks, Unknown}
+import traenupi_core/knowledge_db
 
 pub fn main() {
   let args = get_args()
   
   case cli.parse_args(args) {
-    cli.ParseOk(command) -> handle_command(command)
+    cli.ParseOk(command) -> {
+      let _ = handle_command(command)
+      Nil
+    }
     cli.ParseError(message) -> {
       io.println("Error: " <> message)
       io.println("")
@@ -18,16 +24,16 @@ pub fn main() {
 
 fn handle_command(command: CliCommand) {
   case command {
-    Help -> show_help()
-    Version -> show_version()
-    Status -> show_status()
-    Tellme(question) -> handle_tellme(question)
+    Help -> resolve(show_help())
+    Version -> resolve(show_version())
+    Status -> resolve(show_status())
+    Tellme(question) -> resolve(handle_tellme(question))
     Know(key, value) -> handle_know(key, value)
     Search(query) -> handle_search(query)
-    Remind(minutes, message) -> handle_remind(minutes, message)
-    Review(review_id, action) -> handle_review(review_id, action)
-    Tasks -> handle_tasks()
-    Unknown(cmd, args) -> handle_unknown(cmd, args)
+    Remind(minutes, message) -> resolve(handle_remind(minutes, message))
+    Review(review_id, action) -> resolve(handle_review(review_id, action))
+    Tasks -> resolve(handle_tasks())
+    Unknown(cmd, args) -> resolve(handle_unknown(cmd, args))
   }
 }
 
@@ -70,17 +76,72 @@ fn handle_tellme(question: String) {
 }
 
 fn handle_know(key: String, value: String) {
-  io.println("Storing knowledge:")
-  io.println("  Key: " <> key)
-  io.println("  Value: " <> value)
-  io.println("")
-  io.println("Note: Knowledge storage pending migration")
+  let parts = string.split(key, ":")
+  let category = case parts {
+    [cat, _] -> cat
+    _ -> "general"
+  }
+  
+  use result <- await(knowledge_db.add_knowledge(
+    key,
+    value,
+    category,
+    "traenupi",
+    [],
+    5,
+  ))
+  
+  case result {
+    Ok(_) -> {
+      io.println("✓ Knowledge stored successfully")
+      io.println("  Category: " <> category)
+      io.println("  Key: " <> key)
+      io.println("  Value: " <> value)
+    }
+    Error(e) -> {
+      io.println("✗ Failed to store knowledge")
+      case e {
+        knowledge_db.ConnectionError(msg) -> io.println("  Error: Connection - " <> msg)
+        knowledge_db.QueryError(msg) -> io.println("  Error: Query - " <> msg)
+        knowledge_db.NotFound(msg) -> io.println("  Error: Not found - " <> msg)
+        knowledge_db.DecodeError(msg) -> io.println("  Error: Decode - " <> msg)
+      }
+    }
+  }
+  
+  resolve(Nil)
 }
 
 fn handle_search(query: String) {
-  io.println("Searching for: " <> query)
-  io.println("")
-  io.println("Note: Knowledge search pending migration")
+  use result <- await(knowledge_db.search_knowledge(query, "traenupi"))
+  
+  case result {
+    Ok(entries) -> {
+      io.println("Search results for: " <> query)
+      io.println("")
+      case entries {
+        [] -> io.println("  No results found")
+        _ -> {
+          io.println("  Found " <> int_to_string(list.length(entries)) <> " results:")
+          io.println("")
+          list.each(entries, fn(entry) {
+            io.println("  [" <> entry.category <> "] " <> entry.key <> ": " <> entry.value)
+          })
+        }
+      }
+    }
+    Error(e) -> {
+      io.println("✗ Search failed")
+      case e {
+        knowledge_db.ConnectionError(msg) -> io.println("  Error: Connection - " <> msg)
+        knowledge_db.QueryError(msg) -> io.println("  Error: Query - " <> msg)
+        knowledge_db.NotFound(msg) -> io.println("  Error: Not found - " <> msg)
+        knowledge_db.DecodeError(msg) -> io.println("  Error: Decode - " <> msg)
+      }
+    }
+  }
+  
+  resolve(Nil)
 }
 
 fn handle_remind(minutes: Int, message: String) {

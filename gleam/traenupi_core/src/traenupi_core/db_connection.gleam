@@ -7,7 +7,7 @@ pub fn default_config() -> DbConfig {
   DbConfig(
     host: "localhost",
     port: 5432,
-    database: "traenupi",
+    database: "psypi",
     user: "postgres",
     password: None,
     max_connections: 10,
@@ -31,7 +31,7 @@ pub fn config_from_env() -> Result(DbConfig, DbError) {
     }
     None -> 5432
   }
-  let database = option.unwrap(get_env("DB_NAME"), "traenupi")
+  let database = option.unwrap(get_env("DB_NAME"), "psypi")
   let user = option.unwrap(get_env("DB_USER"), "postgres")
   let password = get_env("DB_PASSWORD")
   let max_conn = case get_env("DB_MAX_CONNECTIONS") {

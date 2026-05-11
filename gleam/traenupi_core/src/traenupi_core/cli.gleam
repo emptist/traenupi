@@ -6,12 +6,16 @@ pub type CliCommand {
   Help
   Version
   Status
-  Tellme(question: String)
+  Tellme(question: String, model: Option(String))
   Know(key: String, value: String)
   Search(query: String)
   Remind(minutes: Int, message: String)
-  Review(review_id: String, action: Option(String))
+  Review(review_id: String, action: Option(String), summary: Option(String))
+  Reviews
   Tasks
+  Models
+  Meetings
+  MeetingSay(meeting_id: String, perspective: String, position: Option(String))
   Unknown(command: String, args: List(String))
 }
 
@@ -35,7 +39,11 @@ pub fn parse_args(args: List(String)) -> ParseResult {
     ["search", ..rest] -> parse_search(rest)
     ["remind", ..rest] -> parse_remind(rest)
     ["review", ..rest] -> parse_review(rest)
+    ["reviews", ..] -> ParseOk(Reviews)
     ["tasks", ..] -> ParseOk(Tasks)
+    ["models", ..] -> ParseOk(Models)
+    ["meetings", ..] -> ParseOk(Meetings)
+    ["meeting", "say", ..rest] -> parse_meeting_say(rest)
     [cmd, ..rest] -> ParseOk(Unknown(command: cmd, args: rest))
   }
 }
@@ -43,7 +51,28 @@ pub fn parse_args(args: List(String)) -> ParseResult {
 fn parse_tellme(args: List(String)) -> ParseResult {
   case args {
     [] -> ParseError("tellme requires a question argument")
-    [_question, ..] -> ParseOk(Tellme(question: string.join(args, " ")))
+    _ -> {
+      let #(model, question_args) = extract_model_flag(args)
+      case question_args {
+        [] -> ParseError("tellme requires a question argument")
+        _ ->
+          ParseOk(Tellme(
+            question: string.join(question_args, " "),
+            model: model,
+          ))
+      }
+    }
+  }
+}
+
+fn extract_model_flag(args: List(String)) -> #(Option(String), List(String)) {
+  case args {
+    ["--model", model, ..rest] -> #(Some(model), rest)
+    [arg, ..rest] -> {
+      let #(model, remaining) = extract_model_flag(rest)
+      #(model, [arg, ..remaining])
+    }
+    [] -> #(None, [])
   }
 }
 
@@ -86,8 +115,48 @@ fn parse_remind(args: List(String)) -> ParseResult {
 fn parse_review(args: List(String)) -> ParseResult {
   case args {
     [] -> ParseError("review requires a review_id argument")
-    [review_id] -> ParseOk(Review(review_id: review_id, action: None))
-    [review_id, action, ..] -> ParseOk(Review(review_id: review_id, action: Some(action)))
+    [review_id] -> ParseOk(Review(review_id: review_id, action: None, summary: None))
+    [review_id, "complete", ..rest] ->
+      ParseOk(Review(
+        review_id: review_id,
+        action: Some("complete"),
+        summary: case rest {
+          [] -> None
+          _ -> Some(string.join(rest, " "))
+        },
+      ))
+    [review_id, action, ..] ->
+      ParseOk(Review(review_id: review_id, action: Some(action), summary: None))
+  }
+}
+
+fn parse_meeting_say(args: List(String)) -> ParseResult {
+  case args {
+    [] -> ParseError("meeting say requires a meeting_id and perspective")
+    [_] -> ParseError("meeting say requires a perspective argument")
+    [meeting_id, ..rest] -> {
+      let #(position, perspective_args) = extract_position_flag(rest)
+      case perspective_args {
+        [] -> ParseError("meeting say requires a perspective argument")
+        _ ->
+          ParseOk(MeetingSay(
+            meeting_id: meeting_id,
+            perspective: string.join(perspective_args, " "),
+            position: position,
+          ))
+      }
+    }
+  }
+}
+
+fn extract_position_flag(args: List(String)) -> #(Option(String), List(String)) {
+  case args {
+    ["--position", pos, ..rest] -> #(Some(pos), rest)
+    [arg, ..rest] -> {
+      let #(pos, remaining) = extract_position_flag(rest)
+      #(pos, [arg, ..remaining])
+    }
+    [] -> #(None, [])
   }
 }
 
@@ -161,17 +230,37 @@ pub fn command_to_string(cmd: CliCommand) -> String {
     Help -> "help"
     Version -> "version"
     Status -> "status"
-    Tellme(question) -> "tellme \"" <> question <> "\""
+    Tellme(question, model) -> {
+      case model {
+        Some(m) -> "tellme --model " <> m <> " \"" <> question <> "\""
+        None -> "tellme \"" <> question <> "\""
+      }
+    }
     Know(key, value) -> "know " <> key <> " \"" <> value <> "\""
     Search(query) -> "search \"" <> query <> "\""
     Remind(minutes, message) -> "remind " <> int_to_string(minutes) <> " \"" <> message <> "\""
-    Review(review_id, action) -> {
+    Review(review_id, action, summary) -> {
       case action {
-        Some(a) -> "review " <> review_id <> " " <> a
+        Some(a) -> {
+          case summary {
+            Some(s) -> "review " <> review_id <> " " <> a <> " \"" <> s <> "\""
+            None -> "review " <> review_id <> " " <> a
+          }
+        }
         None -> "review " <> review_id
       }
     }
+    Reviews -> "reviews"
     Tasks -> "tasks"
+    Models -> "models"
+    Meetings -> "meetings"
+    MeetingSay(meeting_id, perspective, position) -> {
+      case position {
+        Some(p) ->
+          "meeting say " <> meeting_id <> " --position " <> p <> " \"" <> perspective <> "\""
+        None -> "meeting say " <> meeting_id <> " \"" <> perspective <> "\""
+      }
+    }
     Unknown(command, args) -> "unknown: " <> command <> " " <> string.join(args, " ")
   }
 }
@@ -199,7 +288,7 @@ fn int_to_string(n: Int) -> String {
 
 pub fn is_valid_command(cmd: String) -> Bool {
   case cmd {
-    "help" | "version" | "status" | "tellme" | "know" | "search" | "remind" | "review" | "tasks" -> True
+    "help" | "version" | "status" | "tellme" | "know" | "search" | "remind" | "review" | "reviews" | "tasks" | "models" | "meetings" | "meeting" -> True
     _ -> False
   }
 }
@@ -211,9 +300,16 @@ pub fn get_help_text() -> String {
   version           Show version information
   status            Show daemon status
   tellme <question> Ask the baby AI a question
+  tellme --model <m> <q> Use a specific AI model (e.g. qwen3:4b, llama3.2:3b)
   know <key> <val>  Store knowledge in the database
-  search <query>    Search the web
+  search <query>    Search knowledge base
   remind <min> <msg> Set a reminder
-  review <id> [act] View or complete a review
-  tasks             List current tasks"
+  reviews           List pending inter-reviews
+  review <id>       View an inter-review
+  review <id> complete \"summary\" Complete an inter-review
+  tasks             List current tasks
+  models            List available AI models
+  meetings          List active meetings
+  meeting say <id> <perspective> Join a meeting with your opinion
+  meeting say <id> --position <pos> <perspective> With position (support/oppose/neutral)"
 }

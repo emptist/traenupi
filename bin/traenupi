@@ -1,8 +1,10 @@
-#!/usr/bin/env node
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+#!/usr/bin/env bash
+set -euo pipefail
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const entry = join(__dirname, "..", "dist", "index.js");
+PROJECT_ROOT="/Users/jk/gits/hub/tools_ai/traenupi"
+GLEAM_CLI_DIR="$PROJECT_ROOT/gleam/traenupi_cli"
 
-import(entry);
+export NODE_PATH="$PROJECT_ROOT/node_modules"
+
+cd "$GLEAM_CLI_DIR"
+exec gleam run -- "$@"

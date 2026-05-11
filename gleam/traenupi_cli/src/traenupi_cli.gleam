@@ -1,42 +1,48 @@
 import gleam/io
+import gleam/int
 import gleam/javascript/promise.{await, resolve}
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
 import traenupi_core/ai_provider
 import traenupi_core/cli.{
-  type CliCommand, Help, Know, Remind, Review, Search, Status, Tasks, Tellme,
-  Unknown, Version,
+  type CliCommand, Help, Know, MeetingSay, Meetings, Models, Remind, Review,
+  Reviews, Search, Status, Tasks, Tellme, Unknown, Version,
 }
 import traenupi_core/knowledge_db
+import traenupi_core/reviews_db
+import traenupi_core/meetings_db
 
 pub fn main() {
   let args = get_args()
 
   case cli.parse_args(args) {
-    cli.ParseOk(command) -> {
-      let _ = handle_command(command)
-      Nil
-    }
+    cli.ParseOk(command) -> handle_command(command)
     cli.ParseError(message) -> {
       io.println("Error: " <> message)
       io.println("")
-      show_help()
+      resolve(show_help())
     }
   }
 }
 
-fn handle_command(command: CliCommand) {
+fn handle_command(command: CliCommand) -> promise.Promise(Nil) {
   case command {
     Help -> resolve(show_help())
     Version -> resolve(show_version())
     Status -> resolve(show_status())
-    Tellme(question) -> resolve(handle_tellme(question))
+    Tellme(question, model) -> handle_tellme(question, model)
     Know(key, value) -> handle_know(key, value)
     Search(query) -> handle_search(query)
     Remind(minutes, message) -> resolve(handle_remind(minutes, message))
-    Review(review_id, action) -> resolve(handle_review(review_id, action))
+    Review(review_id, action, summary) ->
+      handle_review(review_id, action, summary)
+    Reviews -> handle_reviews()
     Tasks -> resolve(handle_tasks())
+    Models -> handle_models()
+    Meetings -> handle_meetings()
+    MeetingSay(meeting_id, perspective, position) ->
+      handle_meeting_say(meeting_id, perspective, position)
     Unknown(cmd, args) -> resolve(handle_unknown(cmd, args))
   }
 }
@@ -51,11 +57,18 @@ fn show_help() {
   io.println("  version           Show version information")
   io.println("  status            Show daemon status")
   io.println("  tellme <question> Ask baby AI a question")
+  io.println("  tellme --model <m> <q> Use specific model (e.g. qwen3:4b, llama3.2:3b)")
   io.println("  know <key> <value> Store knowledge")
   io.println("  search <query>    Search knowledge base")
   io.println("  remind <min> <msg> Set a reminder")
-  io.println("  review <id>       Review a session")
+  io.println("  reviews           List pending inter-reviews")
+  io.println("  review <id>       View an inter-review")
+  io.println("  review <id> complete \"summary\" Complete an inter-review")
   io.println("  tasks             List current tasks")
+  io.println("  models            List available AI models")
+  io.println("  meetings          List active meetings")
+  io.println("  meeting say <id> <perspective> Join a meeting with your opinion")
+  io.println("  meeting say <id> --position <pos> <perspective> With position")
   io.println("")
 }
 
@@ -73,65 +86,91 @@ fn show_status() {
   io.println("Note: Full status implementation pending")
 }
 
-fn handle_tellme(question: String) {
+fn handle_tellme(question: String, model_opt: option.Option(String)) {
   io.println("Question: " <> question)
   io.println("")
 
-  // Try keychain first (most secure), then env var
-  let api_key = get_api_key()
+  let ollama_model = case model_opt {
+    Some(m) -> m
+    None -> "qwen3:4b"
+  }
+  let ollama_provider = ai_provider.ollama()
+  let messages = [ai_provider.Message(role: "user", content: question)]
+  let system_prompt =
+    Some(
+      "You are a helpful AI assistant integrated with TraeNuPI. Be concise and helpful.",
+    )
 
-  case api_key {
-    "" -> {
-      io.println("✗ Error: No API key found")
+  io.println("🤖 Asking AI (Ollama local: " <> ollama_model <> ")...")
+  io.println("─" <> string.repeat("─", 50))
+
+  use ollama_result <- await(
+    ai_provider.chat_completion(
+      ollama_provider,
+      ollama_model,
+      messages,
+      system_prompt,
+    ),
+  )
+
+  case ollama_result {
+    Ok(response) -> {
+      let content = ai_provider.get_content(response)
       io.println("")
-      io.println("Please add your OpenRouter API key to macOS Keychain:")
+      io.println("✅ AI Response:")
       io.println("")
-      io.println("  security add-generic-password \\")
-      io.println("    -s \"traenupi\" \\")
-      io.println("    -a \"openrouter-api-key\" \\")
-      io.println("    -w \"your-api-key-here\"")
+      io.println(content)
       io.println("")
-      io.println("Or set environment variable:")
-      io.println("  export OPENROUTER_API_KEY='your-api-key-here'")
-    }
-    key -> {
-      io.println("🤖 Asking AI (Pure Gleam)...")
       io.println("─" <> string.repeat("─", 50))
+      resolve(Nil)
+    }
+    Error(ollama_error) -> {
+      io.println("")
+      io.println(
+        "⚠️  Ollama failed: " <> ai_provider.error_to_string(ollama_error),
+      )
+      io.println("")
 
-      let provider = ai_provider.openrouter(key)
-      let messages = [ai_provider.Message(role: "user", content: question)]
-      let system_prompt =
-        Some(
-          "You are a helpful AI assistant integrated with TraeNuPI. Be concise and helpful.",
-        )
-
-      case
-        ai_provider.chat_completion(
-          provider,
-          "anthropic/claude-3.5-sonnet",
-          messages,
-          system_prompt,
-        )
-      {
-        Ok(response) -> {
-          let content = ai_provider.get_content(response)
-
-          io.println("")
-          io.println("✅ AI Response:")
-          io.println("")
-          io.println(content)
-          io.println("")
+      let api_key = get_api_key()
+      case api_key {
+        "" -> {
+          io.println("✗ No OpenRouter API key for fallback")
+          io.println("  Start Ollama: ollama serve")
+          io.println("  Pull model:   ollama pull qwen3:4b")
+          resolve(Nil)
+        }
+        key -> {
+          io.println("🔄 Falling back to OpenRouter...")
           io.println("─" <> string.repeat("─", 50))
 
-          case response.is_fallback {
-            True -> io.println("⚠️  Response via fallback provider")
-            False -> Nil
+          let or_provider = ai_provider.openrouter(key)
+          use or_result <- await(
+            ai_provider.chat_completion(
+              or_provider,
+              "anthropic/claude-sonnet-4.6",
+              messages,
+              system_prompt,
+            ),
+          )
+
+          case or_result {
+            Ok(response) -> {
+              let content = ai_provider.get_content(response)
+              io.println("")
+              io.println("✅ AI Response (OpenRouter fallback):")
+              io.println("")
+              io.println(content)
+              io.println("")
+              io.println("─" <> string.repeat("─", 50))
+            }
+            Error(error) -> {
+              io.println("")
+              io.println("✗ OpenRouter also failed:")
+              io.println(ai_provider.error_to_string(error))
+            }
           }
-        }
-        Error(error) -> {
-          io.println("")
-          io.println("✗ AI Error:")
-          io.println(ai_provider.error_to_string(error))
+
+          resolve(Nil)
         }
       }
     }
@@ -187,7 +226,7 @@ fn handle_search(query: String) {
         [] -> io.println("  No results found")
         _ -> {
           io.println(
-            "  Found " <> int_to_string(list.length(entries)) <> " results:",
+            "  Found " <> int.to_string(list.length(entries)) <> " results:",
           )
           io.println("")
           list.each(entries, fn(entry) {
@@ -220,26 +259,262 @@ fn handle_search(query: String) {
 
 fn handle_remind(minutes: Int, message: String) {
   io.println("Reminder set:")
-  io.println("  In: " <> int_to_string(minutes) <> " minutes")
+  io.println("  In: " <> int.to_string(minutes) <> " minutes")
   io.println("  Message: " <> message)
   io.println("")
   io.println("Note: Reminder system pending migration")
 }
 
-fn handle_review(review_id: String, action: option.Option(String)) {
-  io.println("Review: " <> review_id)
+fn handle_review(
+  review_id: String,
+  action: option.Option(String),
+  summary: option.Option(String),
+) -> promise.Promise(Nil) {
   case action {
-    Some(act) -> io.println("Action: " <> act)
-    None -> Nil
+    Some("complete") -> {
+      let summary_text = case summary {
+        Some(s) -> s
+        None -> "Reviewed and completed"
+      }
+      use result <- await(
+        reviews_db.complete_review(review_id, summary_text, "traenupi-gleam-cli"),
+      )
+      case result {
+        Ok(_) -> {
+          io.println("✅ Review completed: " <> review_id)
+          io.println("  Summary: " <> summary_text)
+        }
+        Error(reviews_db.NotFound(msg)) ->
+          io.println("✗ Review not found: " <> msg)
+        Error(reviews_db.ConnectionError(msg)) ->
+          io.println("✗ Connection error: " <> msg)
+        Error(reviews_db.QueryError(msg)) ->
+          io.println("✗ Query error: " <> msg)
+      }
+      resolve(Nil)
+    }
+    _ -> {
+      use result <- await(reviews_db.get_review(review_id))
+      case result {
+        Ok(review) -> {
+          io.println("📋 " <> reviews_db.review_to_full_string(review))
+          io.println("")
+          case review.review_context {
+            "" -> Nil
+            ctx -> {
+              io.println("Context:")
+              io.println("  " <> ctx)
+            }
+          }
+        }
+        Error(reviews_db.NotFound(msg)) ->
+          io.println("✗ Review not found: " <> msg)
+        Error(reviews_db.ConnectionError(msg)) ->
+          io.println("✗ Connection error: " <> msg)
+        Error(reviews_db.QueryError(msg)) ->
+          io.println("✗ Query error: " <> msg)
+      }
+      resolve(Nil)
+    }
   }
+}
+
+fn handle_reviews() -> promise.Promise(Nil) {
+  io.println("╔════════════════════════════════════════════╗")
+  io.println("║     Pending Inter-Reviews                  ║")
+  io.println("╚════════════════════════════════════════════╝")
   io.println("")
-  io.println("Note: Review system pending migration")
+
+  use result <- await(reviews_db.list_pending_reviews())
+
+  case result {
+    Ok(reviews) -> {
+      case reviews {
+        [] -> {
+          io.println("✅ No pending inter-reviews found!")
+        }
+        _ -> {
+          io.println(
+            "📋 Found " <> int.to_string(list.length(reviews)) <> " pending review(s):",
+          )
+          io.println("")
+          list.each(reviews, fn(review) {
+            io.println("  🔍 " <> reviews_db.review_to_short_string(review))
+          })
+          io.println("")
+          io.println("──────────────────────────────────────────────────")
+          io.println("💡 To perform a review:")
+          io.println("   traenupi review <id>  - View review details")
+          io.println(
+            "   traenupi review <id> complete \"summary\" - Complete the review",
+          )
+        }
+      }
+    }
+    Error(reviews_db.ConnectionError(msg)) -> {
+      io.println("✗ Could not connect to database")
+      io.println("  " <> msg)
+    }
+    Error(reviews_db.QueryError(msg)) -> {
+      io.println("✗ Query error")
+      io.println("  " <> msg)
+    }
+    Error(reviews_db.NotFound(msg)) -> {
+      io.println("✗ Not found: " <> msg)
+    }
+  }
+
+  resolve(Nil)
+}
+
+fn handle_meetings() -> promise.Promise(Nil) {
+  io.println("╔════════════════════════════════════════════╗")
+  io.println("║     Active Meetings                        ║")
+  io.println("╚════════════════════════════════════════════╝")
+  io.println("")
+
+  use result <- await(meetings_db.list_active_meetings())
+
+  case result {
+    Ok(meetings) -> {
+      case meetings {
+        [] -> {
+          io.println("  No active meetings found")
+        }
+        _ -> {
+          io.println(
+            "📋 Found " <> int.to_string(list.length(meetings)) <> " active meeting(s):",
+          )
+          io.println("")
+          list.each(meetings, fn(meeting) {
+            let short_id = case string.length(meeting.id) > 8 {
+              True -> string.slice(meeting.id, 0, 8)
+              False -> meeting.id
+            }
+            io.println("  📌 " <> short_id <> " | " <> meeting.topic)
+          })
+          io.println("")
+          io.println("──────────────────────────────────────────────────")
+          io.println("💡 To join a meeting:")
+          io.println(
+            "   traenupi meeting say <id> \"your perspective\"",
+          )
+          io.println(
+            "   traenupi meeting say <id> --position support \"your perspective\"",
+          )
+        }
+      }
+    }
+    Error(meetings_db.ConnectionError(msg)) -> {
+      io.println("✗ Could not connect to database")
+      io.println("  " <> msg)
+    }
+    Error(meetings_db.QueryError(msg)) -> {
+      io.println("✗ Query error")
+      io.println("  " <> msg)
+    }
+    Error(meetings_db.NotFound(msg)) -> {
+      io.println("✗ Not found: " <> msg)
+    }
+  }
+
+  resolve(Nil)
+}
+
+fn handle_meeting_say(
+  meeting_id: String,
+  perspective: String,
+  position: option.Option(String),
+) -> promise.Promise(Nil) {
+  let pos = case position {
+    Some(p) -> p
+    None -> "support"
+  }
+
+  use result <- await(
+    meetings_db.add_meeting_opinion(
+      meeting_id,
+      "S-TRAE-traenupi-gleam-cli",
+      perspective,
+      pos,
+    ),
+  )
+
+  case result {
+    Ok(_) -> {
+      io.println("✅ Opinion added to meeting " <> meeting_id)
+      io.println("  Position: " <> pos)
+      io.println("  Perspective: " <> perspective)
+    }
+    Error(meetings_db.ConnectionError(msg)) -> {
+      io.println("✗ Could not connect to database")
+      io.println("  " <> msg)
+    }
+    Error(meetings_db.QueryError(msg)) -> {
+      io.println("✗ Query error")
+      io.println("  " <> msg)
+    }
+    Error(meetings_db.NotFound(msg)) -> {
+      io.println("✗ Not found: " <> msg)
+    }
+  }
+
+  resolve(Nil)
 }
 
 fn handle_tasks() {
   io.println("=== Current Tasks ===")
   io.println("")
   io.println("Note: Task listing pending migration")
+}
+
+fn handle_models() {
+  io.println("=== Available AI Models ===")
+  io.println("")
+
+  let ollama_config = case ai_provider.ollama() {
+    ai_provider.Ollama(config) -> config
+    _ -> ai_provider.OllamaConfig(host: "localhost", port: 11_434)
+  }
+
+  use result <- await(ai_provider.list_ollama_models(ollama_config))
+
+  case result {
+    Ok(models) -> {
+      case models {
+        [] -> {
+          io.println("  No Ollama models found")
+          io.println("")
+          io.println("  Pull a model: ollama pull qwen3:4b")
+        }
+        _ -> {
+          io.println("  Ollama (local):")
+          io.println("")
+          list.each(models, fn(model) {
+            io.println("    " <> ai_provider.model_info_to_string(model))
+          })
+          io.println("")
+          io.println(
+            "  Use with: traenupi tellme --model "
+            <> case models {
+              [first, ..] -> first.name
+              _ -> "qwen3:4b"
+            }
+            <> " \"your question\"",
+          )
+        }
+      }
+    }
+    Error(error) -> {
+      io.println("  ✗ Could not connect to Ollama")
+      io.println("  " <> ai_provider.error_to_string(error))
+      io.println("")
+      io.println("  Start Ollama: ollama serve")
+      io.println("  Pull a model: ollama pull qwen3:4b")
+    }
+  }
+
+  resolve(Nil)
 }
 
 fn handle_unknown(cmd: String, args: List(String)) {
@@ -250,19 +525,14 @@ fn handle_unknown(cmd: String, args: List(String)) {
 }
 
 fn get_api_key() -> String {
-  // Priority 1: macOS Keychain (try multiple service names)
   let keychain_key_traenupi = get_keychain_password("traenupi")
 
   case keychain_key_traenupi {
     "" -> {
-      // Try "openrouter" service name (common alternative)
       let keychain_key_openrouter = get_keychain_password("openrouter")
 
       case keychain_key_openrouter {
-        "" -> {
-          // Priority 2: Environment variable
-          get_env("OPENROUTER_API_KEY")
-        }
+        "" -> get_env("OPENROUTER_API_KEY")
         key -> {
           io.println("🔐 Using API key from Keychain ✓ (service: openrouter)")
           key
@@ -278,9 +548,6 @@ fn get_api_key() -> String {
 
 @external(javascript, "../traenupi_cli_ffi.mjs", "getArgs")
 fn get_args() -> List(String)
-
-@external(javascript, "../traenupi_cli_ffi.mjs", "intToString")
-fn int_to_string(i: Int) -> String
 
 @external(javascript, "../traenupi_cli_ffi.mjs", "getEnv")
 fn get_env(key: String) -> String

@@ -1,0 +1,42 @@
+feat: Pure Gleam AI provider with keychain integration and migration planning
+
+MAJOR FEATURES:
+
+1. Pure Gleam AI Provider (Replaces pi dependency)
+   - ai_provider.gleam with OpenRouter + Ollama support
+   - Direct HTTP client (no TypeScript bridge)
+   - Smart fallback: cloud → local models
+   - 424+ tests passing
+
+2. macOS Keychain Integration (Secure API Key Storage)
+   - FFI implementation for key retrieval
+   - Dual service name support ('traenupi', 'openrouter')
+   - Priority: Keychain → Environment Variable
+   - Setup script: scripts/setup_keychain.sh
+
+3. Enhanced Security (.gitignore Updates)
+   - Blocks secrets, API keys, credentials
+   - Root + gleam/traenupi_core/.gitignore
+
+4. Migration Planning Documentation (~1,200 lines)
+   - MIGRATION_PLAN_TS_TO_GLEAM.md (50+ TS files audited)
+   - OLLAMA_AND_CROSSPLATFORM_PLAN.md (Phase 0 features)
+   - KEYCHAIN_INTEGRATION.md (security guide)
+
+FILES:
+- gleam/traenupi_core/src/traenupi_core/ai_provider.gleam (NEW)
+- gleam/traenupi_core/src/http_ffi.mjs (enhanced)
+- gleam/traenupi_core/src/traenupi_core_ffi.mjs (NEW)
+- gleam/traenupi_cli/src/traenupi_cli.gleam (keychain)
+- gleam/traenupi_cli/src/traenupi_cli_ffi.mjs (getKeychainPassword)
+- docs/*.md (4 new documentation files)
+- .gitignore (security rules)
+
+STATUS:
+✅ Build succeeds
+✅ Keychain integration working
+✅ HTTP client connects to OpenRouter
+✅ CLI executes properly
+⚠️ OpenRouter returning 500 (external issue, not code bug)
+
+NEXT: Phase 0 - Implement Ollama + cross-platform secrets

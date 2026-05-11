@@ -161,8 +161,9 @@ pub fn parse_args_status_test() {
 
 pub fn parse_args_tellme_test() {
   parse_args(["tellme"]) |> should.equal(ParseError("tellme requires a question argument"))
-  parse_args(["tellme", "hello"]) |> should.equal(ParseOk(Tellme(question: "hello")))
-  parse_args(["tellme", "what", "is", "this"]) |> should.equal(ParseOk(Tellme(question: "what is this")))
+  parse_args(["tellme", "hello"]) |> should.equal(ParseOk(Tellme(question: "hello", model: None)))
+  parse_args(["tellme", "what", "is", "this"]) |> should.equal(ParseOk(Tellme(question: "what is this", model: None)))
+  parse_args(["tellme", "--model", "llama3.2:3b", "hello"]) |> should.equal(ParseOk(Tellme(question: "hello", model: Some("llama3.2:3b"))))
 }
 
 pub fn parse_args_know_test() {
@@ -185,8 +186,9 @@ pub fn parse_args_remind_test() {
 
 pub fn parse_args_review_test() {
   parse_args(["review"]) |> should.equal(ParseError("review requires a review_id argument"))
-  parse_args(["review", "abc123"]) |> should.equal(ParseOk(Review(review_id: "abc123", action: None)))
-  parse_args(["review", "abc123", "complete"]) |> should.equal(ParseOk(Review(review_id: "abc123", action: Some("complete"))))
+  parse_args(["review", "abc123"]) |> should.equal(ParseOk(Review(review_id: "abc123", action: None, summary: None)))
+  parse_args(["review", "abc123", "complete"]) |> should.equal(ParseOk(Review(review_id: "abc123", action: Some("complete"), summary: None)))
+  parse_args(["review", "abc123", "complete", "looks", "good"]) |> should.equal(ParseOk(Review(review_id: "abc123", action: Some("complete"), summary: Some("looks good"))))
 }
 
 pub fn parse_args_tasks_test() {

@@ -1,58 +1,33 @@
-export async function fetch(request) {
+import { Ok, Error as GleamError, NonEmpty, Empty } from "../prelude.mjs";
+import { Some, None } from "../gleam_stdlib/gleam/option.mjs";
+
+export async function fetch(method, url, headers, body) {
   try {
-    // DEBUG: Log request details (without sensitive data)
-    console.error('[HTTP] Request URL:', request.url);
-    console.error('[HTTP] Method:', typeof request.method, JSON.stringify(request.method));
-    
-    // Convert Gleam Dict headers to JavaScript object
-    const headers = {};
-    if (request.headers && typeof request.headers === 'object') {
-      // Gleam Dict - iterate and extract key-value pairs
-      const entries = Object.entries(request.headers);
-      console.error('[HTTP] Headers entries count:', entries.length);
-      for (const [key, value] of entries) {
-        // Skip internal Gleam properties
-        if (!key.startsWith('__') && typeof value === 'string') {
-          headers[key] = value;
-          console.error('[HTTP] Header:', key, '=<hidden>');
-        }
+    const headerObj = {};
+    let current = headers;
+    while (current instanceof NonEmpty) {
+      const pair = current.head;
+      if (Array.isArray(pair) && pair.length === 2) {
+        headerObj[pair[0]] = pair[1];
       }
+      current = current.tail;
     }
 
-    // Convert Gleam HTTP method enum to string
-    let method = 'post';  // Default to POST for API calls
-    if (request.method) {
-      if (typeof request.method === 'string') {
-        method = request.method.toLowerCase();
-      } else {
-        // Gleam enum - use default POST
-        method = 'post';
-      }
-    }
-    
-    console.error('[HTTP] Final method:', method);
-
-    const response = await globalThis.fetch(request.url, {
+    const fetchOptions = {
       method: method,
-      headers: headers,
-      body: request.body || undefined,
-    });
-    
-    const text = await response.text();
-    console.error('[HTTP] Response status:', response.status);
-    
-    // Log first 200 chars of body for debugging (no secrets)
-    if (text) {
-      console.error('[HTTP] Body preview:', text.substring(0, 200));
-    }
-    
-    return {
-      status: response.status,
-      body: text,
+      headers: headerObj,
     };
+
+    if (body instanceof Some) {
+      fetchOptions.body = body[0];
+    }
+
+    const response = await globalThis.fetch(url, fetchOptions);
+    const text = await response.text();
+
+    return new Ok({ status: response.status, body: text });
   } catch (error) {
     const errorMsg = error.message || error.toString() || "Network request failed";
-    console.error('[HTTP] Error:', errorMsg);
-    throw new Error(errorMsg);
+    return new GleamError(errorMsg);
   }
 }

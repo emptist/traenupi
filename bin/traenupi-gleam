@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GLEAM_CLI_DIR="$(cd "$(dirname "$0")/.." && pwd)/gleam/traenupi_cli"
+
+cd "$GLEAM_CLI_DIR"
+exec gleam run -- "$@"

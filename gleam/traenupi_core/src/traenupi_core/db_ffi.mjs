@@ -1,10 +1,65 @@
-import pg from 'pg';
+import { createRequire } from 'module';
+import { join } from 'path';
+import { Ok, Error as GleamError, CustomType, toList } from "../gleam.mjs";
+import { Some, None } from "../../gleam_stdlib/gleam/option.mjs";
+import * as dict from "../../gleam_stdlib/gleam/dict.mjs";
 
-const { Pool } = pg;
+const require = createRequire(import.meta.url);
+
+let pgModule = null;
+
+function resolvePgPath() {
+  const candidates = [
+    join(process.cwd(), '..', '..', '..', '..', 'node_modules', 'pg'),
+  ];
+  const projectRoot = '/Users/jk/gits/hub/tools_ai/traenupi/node_modules/pg';
+  candidates.push(projectRoot);
+  for (const p of candidates) {
+    try { require.resolve(p); return p; } catch {}
+  }
+  return 'pg';
+}
+
+function getPg() {
+  if (pgModule) return pgModule;
+  try {
+    const mod = require(resolvePgPath());
+    pgModule = mod.default || mod;
+    return pgModule;
+  } catch (e) {
+    throw new Error(`Cannot load pg module: ${e.message}`);
+  }
+}
+
+class ConnectionError extends CustomType {
+  constructor($0) { super(); this[0] = $0; }
+}
+class QueryError extends CustomType {
+  constructor($0) { super(); this[0] = $0; }
+}
+class ClosedError extends CustomType {}
+class TimeoutError extends CustomType {}
+class PoolExhausted extends CustomType {}
+class InvalidConfig extends CustomType {
+  constructor($0) { super(); this[0] = $0; }
+}
+
+class QueryResult extends CustomType {
+  constructor(rows, row_count) { super(); this.rows = rows; this.row_count = row_count; }
+}
+
+class Healthy extends CustomType {
+  constructor(latency_ms) { super(); this.latency_ms = latency_ms; }
+}
+class Unhealthy extends CustomType {
+  constructor(error) { super(); this.error = error; }
+}
 
 export function connect(config) {
   return new Promise((resolve) => {
     try {
+      const pg = getPg();
+      const Pool = pg.Pool;
       const poolConfig = {
         host: config.host,
         port: config.port,
@@ -15,7 +70,7 @@ export function connect(config) {
         connectionTimeoutMillis: config.connection_timeout_ms,
       };
 
-      if (config.password && config.password.type === 'Some') {
+      if (config.password instanceof Some) {
         poolConfig.password = config.password[0];
       }
 
@@ -31,14 +86,12 @@ export function connect(config) {
           if (branch) {
             await client.query(`SET app.git_branch = '${branch}'`);
           }
-        } catch (e) {
-          // Ignore branch setting errors
-        }
+        } catch (e) {}
       });
 
-      resolve({ type: 'Ok', value: { pool, isClosed: false } });
+      resolve(new Ok({ pool, isClosed: false }));
     } catch (e) {
-      resolve({ type: 'Error', value: { ConnectionError: e.message } });
+      resolve(new GleamError(new ConnectionError(e.message)));
     }
   });
 }
@@ -55,32 +108,44 @@ async function getGitBranch() {
   }
 }
 
+function gleamListToArray(list) {
+  const arr = [];
+  let current = list;
+  while (current && current.head !== undefined) {
+    arr.push(current.head);
+    current = current.tail;
+  }
+  return arr;
+}
+
+function objectToGleamDict(obj) {
+  const entries = [];
+  for (const [key, value] of Object.entries(obj)) {
+    entries.push([key, value]);
+  }
+  return dict.from_list(toList(entries));
+}
+
 export function query(conn, sql, params) {
   return new Promise(async (resolve) => {
     if (conn.isClosed) {
-      resolve({ type: 'Error', value: { ClosedError: 'Connection is closed' } });
+      resolve(new GleamError(new ClosedError()));
       return;
     }
 
     try {
-      const result = await conn.pool.query(sql, params);
+      const result = await conn.pool.query(sql, gleamListToArray(params));
       const rows = result.rows.map(row => {
-        const dict = {};
+        const dictObj = {};
         for (const [key, value] of Object.entries(row)) {
-          dict[key] = value === null ? 'null' : String(value);
+          dictObj[key] = value === null ? 'null' : String(value);
         }
-        return dict;
+        return objectToGleamDict(dictObj);
       });
 
-      resolve({
-        type: 'Ok',
-        value: {
-          rows: rows,
-          row_count: result.rowCount || 0,
-        },
-      });
+      resolve(new Ok(new QueryResult(toList(rows), result.rowCount || 0)));
     } catch (e) {
-      resolve({ type: 'Error', value: { QueryError: e.message } });
+      resolve(new GleamError(new QueryError(e.message)));
     }
   });
 }
@@ -88,24 +153,24 @@ export function query(conn, sql, params) {
 export function query_one(conn, sql, params) {
   return new Promise(async (resolve) => {
     if (conn.isClosed) {
-      resolve({ type: 'Error', value: { ClosedError: 'Connection is closed' } });
+      resolve(new GleamError(new ClosedError()));
       return;
     }
 
     try {
-      const result = await conn.pool.query(sql, params);
+      const result = await conn.pool.query(sql, gleamListToArray(params));
       if (result.rows.length === 0) {
-        resolve({ type: 'Ok', value: { type: 'None' } });
+        resolve(new Ok(new None()));
       } else {
         const row = result.rows[0];
-        const dict = {};
+        const dictObj = {};
         for (const [key, value] of Object.entries(row)) {
-          dict[key] = value === null ? 'null' : String(value);
+          dictObj[key] = value === null ? 'null' : String(value);
         }
-        resolve({ type: 'Ok', value: { type: 'Some', value: dict } });
+        resolve(new Ok(new Some(objectToGleamDict(dictObj))));
       }
     } catch (e) {
-      resolve({ type: 'Error', value: { QueryError: e.message } });
+      resolve(new GleamError(new QueryError(e.message)));
     }
   });
 }
@@ -113,15 +178,15 @@ export function query_one(conn, sql, params) {
 export function execute(conn, sql, params) {
   return new Promise(async (resolve) => {
     if (conn.isClosed) {
-      resolve({ type: 'Error', value: { ClosedError: 'Connection is closed' } });
+      resolve(new GleamError(new ClosedError()));
       return;
     }
 
     try {
-      const result = await conn.pool.query(sql, params);
-      resolve({ type: 'Ok', value: result.rowCount || 0 });
+      const result = await conn.pool.query(sql, gleamListToArray(params));
+      resolve(new Ok(result.rowCount || 0));
     } catch (e) {
-      resolve({ type: 'Error', value: { QueryError: e.message } });
+      resolve(new GleamError(new QueryError(e.message)));
     }
   });
 }
@@ -129,16 +194,16 @@ export function execute(conn, sql, params) {
 export function close(conn) {
   return new Promise(async (resolve) => {
     if (conn.isClosed) {
-      resolve({ type: 'Ok', value: null });
+      resolve(new Ok(null));
       return;
     }
 
     try {
       await conn.pool.end();
       conn.isClosed = true;
-      resolve({ type: 'Ok', value: null });
+      resolve(new Ok(null));
     } catch (e) {
-      resolve({ type: 'Error', value: { QueryError: e.message } });
+      resolve(new GleamError(new QueryError(e.message)));
     }
   });
 }
@@ -161,9 +226,9 @@ export function health_check(conn) {
     const start = Date.now();
     try {
       await conn.pool.query('SELECT 1');
-      resolve({ Healthy: Date.now() - start });
+      resolve(new Healthy(Date.now() - start));
     } catch (e) {
-      resolve({ Unhealthy: e.message });
+      resolve(new Unhealthy(e.message));
     }
   });
 }
@@ -171,16 +236,16 @@ export function health_check(conn) {
 export function set_project_context(conn, projectId) {
   return new Promise(async (resolve) => {
     try {
-      if (projectId.type === 'None') {
+      if (projectId instanceof None) {
         await conn.pool.query('SELECT disable_cross_project_learning()');
-      } else if (projectId.value === 'ALL') {
+      } else if (projectId[0] === 'ALL') {
         await conn.pool.query('SELECT enable_cross_project_learning()');
       } else {
-        await conn.pool.query('SELECT set_project_context($1)', [projectId.value]);
+        await conn.pool.query('SELECT set_project_context($1)', [projectId[0]]);
       }
-      resolve({ type: 'Ok', value: null });
+      resolve(new Ok(null));
     } catch (e) {
-      resolve({ type: 'Error', value: { QueryError: e.message } });
+      resolve(new GleamError(new QueryError(e.message)));
     }
   });
 }
@@ -188,16 +253,16 @@ export function set_project_context(conn, projectId) {
 export function get_env(key) {
   const value = process.env[key];
   if (value === undefined || value === '') {
-    return { type: 'None' };
+    return new None();
   }
-  return { type: 'Some', value };
+  return new Some(value);
 }
 
 export function cwd() {
   try {
-    return { type: 'Ok', value: process.cwd() };
+    return new Ok(process.cwd());
   } catch {
-    return { type: 'Error', value: 'Failed to get current directory' };
+    return new GleamError('Failed to get current directory');
   }
 }
 
@@ -205,14 +270,15 @@ export function run_shell_command(command, args) {
   return new Promise((resolve) => {
     try {
       const { execSync } = require('child_process');
-      const result = execSync(`${command} ${args.join(' ')}`, {
+      const argsArray = gleamListToArray(args);
+      const result = execSync(`${command} ${argsArray.join(' ')}`, {
         encoding: 'utf8',
         timeout: 5000,
         stdio: ['ignore', 'pipe', 'ignore'],
       });
-      resolve({ type: 'Ok', value: result });
+      resolve(new Ok(result));
     } catch (e) {
-      resolve({ type: 'Error', value: e.message });
+      resolve(new GleamError(e.message));
     }
   });
 }

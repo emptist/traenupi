@@ -1,17 +1,22 @@
-import gleam/io
 import gleam/int
+import gleam/io
 import gleam/javascript/promise.{await, resolve}
 import gleam/list
 import gleam/option.{None, Some}
 import gleam/string
+import traenupi_cli/commit_handler
 import traenupi_core/ai_provider
 import traenupi_core/cli.{
-  type CliCommand, Help, Know, MeetingSay, Meetings, Models, Remind, Review,
-  Reviews, Search, Status, Tasks, Tellme, Unknown, Version,
+  type CliCommand, Backup, Commit, Daemon, Help, Know, MeetingSay, Meetings,
+  Models, Remind, Review, Reviews, Search, Status, Tasks, Tellme, Unknown,
+  Version,
 }
+import traenupi_core/code_backup
+import traenupi_core/commit_review
+import traenupi_core/daemon
 import traenupi_core/knowledge_db
-import traenupi_core/reviews_db
 import traenupi_core/meetings_db
+import traenupi_core/reviews_db
 
 pub fn main() {
   let args = get_args()
@@ -43,6 +48,9 @@ fn handle_command(command: CliCommand) -> promise.Promise(Nil) {
     Meetings -> handle_meetings()
     MeetingSay(meeting_id, perspective, position) ->
       handle_meeting_say(meeting_id, perspective, position)
+    Backup(project_dir) -> handle_backup(project_dir)
+    Daemon(action) -> handle_daemon(action)
+    Commit -> commit_handler.handle_commit()
     Unknown(cmd, args) -> resolve(handle_unknown(cmd, args))
   }
 }
@@ -57,7 +65,9 @@ fn show_help() {
   io.println("  version           Show version information")
   io.println("  status            Show daemon status")
   io.println("  tellme <question> Ask baby AI a question")
-  io.println("  tellme --model <m> <q> Use specific model (e.g. qwen3:4b, llama3.2:3b)")
+  io.println(
+    "  tellme --model <m> <q> Use specific model (e.g. qwen3:4b, llama3.2:3b)",
+  )
   io.println("  know <key> <value> Store knowledge")
   io.println("  search <query>    Search knowledge base")
   io.println("  remind <min> <msg> Set a reminder")
@@ -67,7 +77,9 @@ fn show_help() {
   io.println("  tasks             List current tasks")
   io.println("  models            List available AI models")
   io.println("  meetings          List active meetings")
-  io.println("  meeting say <id> <perspective> Join a meeting with your opinion")
+  io.println(
+    "  meeting say <id> <perspective> Join a meeting with your opinion",
+  )
   io.println("  meeting say <id> --position <pos> <perspective> With position")
   io.println("")
 }
@@ -104,14 +116,12 @@ fn handle_tellme(question: String, model_opt: option.Option(String)) {
   io.println("🤖 Asking AI (Ollama local: " <> ollama_model <> ")...")
   io.println("─" <> string.repeat("─", 50))
 
-  use ollama_result <- await(
-    ai_provider.chat_completion(
-      ollama_provider,
-      ollama_model,
-      messages,
-      system_prompt,
-    ),
-  )
+  use ollama_result <- await(ai_provider.chat_completion(
+    ollama_provider,
+    ollama_model,
+    messages,
+    system_prompt,
+  ))
 
   case ollama_result {
     Ok(response) -> {
@@ -144,14 +154,12 @@ fn handle_tellme(question: String, model_opt: option.Option(String)) {
           io.println("─" <> string.repeat("─", 50))
 
           let or_provider = ai_provider.openrouter(key)
-          use or_result <- await(
-            ai_provider.chat_completion(
-              or_provider,
-              "anthropic/claude-sonnet-4.6",
-              messages,
-              system_prompt,
-            ),
-          )
+          use or_result <- await(ai_provider.chat_completion(
+            or_provider,
+            "anthropic/claude-sonnet-4.6",
+            messages,
+            system_prompt,
+          ))
 
           case or_result {
             Ok(response) -> {
@@ -276,9 +284,11 @@ fn handle_review(
         Some(s) -> s
         None -> "Reviewed and completed"
       }
-      use result <- await(
-        reviews_db.complete_review(review_id, summary_text, "traenupi-gleam-cli"),
-      )
+      use result <- await(reviews_db.complete_review(
+        review_id,
+        summary_text,
+        "traenupi-gleam-cli",
+      ))
       case result {
         Ok(_) -> {
           io.println("✅ Review completed: " <> review_id)
@@ -335,7 +345,9 @@ fn handle_reviews() -> promise.Promise(Nil) {
         }
         _ -> {
           io.println(
-            "📋 Found " <> int.to_string(list.length(reviews)) <> " pending review(s):",
+            "📋 Found "
+            <> int.to_string(list.length(reviews))
+            <> " pending review(s):",
           )
           io.println("")
           list.each(reviews, fn(review) {
@@ -383,7 +395,9 @@ fn handle_meetings() -> promise.Promise(Nil) {
         }
         _ -> {
           io.println(
-            "📋 Found " <> int.to_string(list.length(meetings)) <> " active meeting(s):",
+            "📋 Found "
+            <> int.to_string(list.length(meetings))
+            <> " active meeting(s):",
           )
           io.println("")
           list.each(meetings, fn(meeting) {
@@ -396,9 +410,7 @@ fn handle_meetings() -> promise.Promise(Nil) {
           io.println("")
           io.println("──────────────────────────────────────────────────")
           io.println("💡 To join a meeting:")
-          io.println(
-            "   traenupi meeting say <id> \"your perspective\"",
-          )
+          io.println("   traenupi meeting say <id> \"your perspective\"")
           io.println(
             "   traenupi meeting say <id> --position support \"your perspective\"",
           )
@@ -431,14 +443,12 @@ fn handle_meeting_say(
     None -> "support"
   }
 
-  use result <- await(
-    meetings_db.add_meeting_opinion(
-      meeting_id,
-      "S-TRAE-traenupi-gleam-cli",
-      perspective,
-      pos,
-    ),
-  )
+  use result <- await(meetings_db.add_meeting_opinion(
+    meeting_id,
+    "S-TRAE-traenupi-gleam-cli",
+    perspective,
+    pos,
+  ))
 
   case result {
     Ok(_) -> {
@@ -461,6 +471,130 @@ fn handle_meeting_say(
 
   resolve(Nil)
 }
+
+fn handle_backup(project_dir: option.Option(String)) -> promise.Promise(Nil) {
+  let dir = case project_dir {
+    Some(d) -> d
+    None -> {
+      case get_cwd() {
+        Ok(d) -> d
+        Error(_) -> "."
+      }
+    }
+  }
+
+  io.println("╔════════════════════════════════════════════╗")
+  io.println("║     Code Backup                            ║")
+  io.println("╚════════════════════════════════════════════╝")
+  io.println("")
+  io.println("📁 Project directory: " <> dir)
+
+  let project_name = code_backup.get_project_name(dir)
+  io.println("📦 Project name: " <> project_name)
+  io.println("")
+
+  use stats <- await(code_backup.backup_project(
+    dir,
+    project_name,
+    "traenupi-cli",
+  ))
+
+  io.println(code_backup.stats_to_string(stats))
+  io.println("")
+
+  resolve(Nil)
+}
+
+fn handle_daemon(action: String) -> promise.Promise(Nil) {
+  case action {
+    "start" -> {
+      use is_running <- await(daemon.is_daemon_running())
+
+      case is_running {
+        True -> {
+          use status <- await(daemon.get_daemon_status())
+          io.println("⚠️  Daemon is already running")
+          io.println("  " <> status)
+          resolve(Nil)
+        }
+        False -> {
+          io.println("🚀 Starting backup daemon...")
+
+          let project_dir = case get_cwd() {
+            Ok(d) -> d
+            Error(_) -> "."
+          }
+
+          let config = daemon.default_daemon_config(project_dir)
+          let pid = daemon.get_pid()
+
+          io.println("📁 Project: " <> config.project_name)
+          io.println("📂 Directory: " <> config.project_dir)
+          io.println(
+            "⏱️  Interval: "
+            <> int.to_string(config.interval_seconds)
+            <> " seconds",
+          )
+          io.println("🔢 PID: " <> int.to_string(pid))
+          io.println("")
+
+          use write_result <- await(daemon.write_pid_file(pid))
+
+          case write_result {
+            Ok(_) -> {
+              io.println("✓ PID file written")
+              daemon.run_daemon(config)
+            }
+            Error(e) -> {
+              io.println("✗ Failed to write PID file: " <> e)
+              resolve(Nil)
+            }
+          }
+        }
+      }
+    }
+    "stop" -> {
+      use result <- await(daemon.read_pid_file())
+
+      case result {
+        Ok(pid) -> {
+          io.println(
+            "🛑 Stopping backup daemon (PID: " <> int.to_string(pid) <> ")...",
+          )
+
+          case stop_process(pid) {
+            Ok(_) -> {
+              use _ <- await(daemon.remove_pid_file())
+              io.println("✓ Daemon stopped")
+              resolve(Nil)
+            }
+            Error(e) -> {
+              io.println("✗ Failed to stop: " <> e)
+              resolve(Nil)
+            }
+          }
+        }
+        Error(e) -> {
+          io.println("✗ No daemon running: " <> e)
+          resolve(Nil)
+        }
+      }
+    }
+    "status" -> {
+      use status <- await(daemon.get_daemon_status())
+      io.println("📊 Backup daemon status:")
+      io.println("  " <> status)
+      resolve(Nil)
+    }
+    _ -> {
+      io.println("Unknown daemon action: " <> action)
+      resolve(Nil)
+    }
+  }
+}
+
+@external(javascript, "./traenupi_cli_ffi.mjs", "stopProcess")
+fn stop_process(pid: Int) -> Result(Nil, String)
 
 fn handle_tasks() {
   io.println("=== Current Tasks ===")
@@ -554,3 +688,6 @@ fn get_env(key: String) -> String
 
 @external(javascript, "../traenupi_cli_ffi.mjs", "getKeychainPassword")
 fn get_keychain_password(service: String) -> String
+
+@external(javascript, "../traenupi_cli_ffi.mjs", "getCwd")
+fn get_cwd() -> Result(String, String)

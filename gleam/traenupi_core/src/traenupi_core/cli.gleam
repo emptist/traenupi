@@ -16,6 +16,9 @@ pub type CliCommand {
   Models
   Meetings
   MeetingSay(meeting_id: String, perspective: String, position: Option(String))
+  Backup(project_dir: Option(String))
+  Daemon(action: String)
+  Commit
   Unknown(command: String, args: List(String))
 }
 
@@ -44,6 +47,9 @@ pub fn parse_args(args: List(String)) -> ParseResult {
     ["models", ..] -> ParseOk(Models)
     ["meetings", ..] -> ParseOk(Meetings)
     ["meeting", "say", ..rest] -> parse_meeting_say(rest)
+    ["backup", ..rest] -> parse_backup(rest)
+    ["commit"] -> ParseOk(Commit)
+    ["daemon", ..rest] -> parse_daemon(rest)
     [cmd, ..rest] -> ParseOk(Unknown(command: cmd, args: rest))
   }
 }
@@ -146,6 +152,24 @@ fn parse_meeting_say(args: List(String)) -> ParseResult {
           ))
       }
     }
+  }
+}
+
+fn parse_backup(args: List(String)) -> ParseResult {
+  case args {
+    [] -> ParseOk(Backup(project_dir: None))
+    [dir] -> ParseOk(Backup(project_dir: Some(dir)))
+    _ -> ParseError("backup takes at most one argument (project directory)")
+  }
+}
+
+fn parse_daemon(args: List(String)) -> ParseResult {
+  case args {
+    [] -> ParseError("daemon requires an action: start, stop, status")
+    ["start", ..] -> ParseOk(Daemon(action: "start"))
+    ["stop", ..] -> ParseOk(Daemon(action: "stop"))
+    ["status", ..] -> ParseOk(Daemon(action: "status"))
+    [action, ..] -> ParseError("daemon: unknown action '" <> action <> "'. Use: start, stop, status")
   }
 }
 
@@ -261,6 +285,14 @@ pub fn command_to_string(cmd: CliCommand) -> String {
         None -> "meeting say " <> meeting_id <> " \"" <> perspective <> "\""
       }
     }
+    Backup(project_dir) -> {
+      case project_dir {
+        Some(dir) -> "backup " <> dir
+        None -> "backup"
+      }
+    }
+    Daemon(action) -> "daemon " <> action
+    Commit -> "commit"
     Unknown(command, args) -> "unknown: " <> command <> " " <> string.join(args, " ")
   }
 }
@@ -288,7 +320,7 @@ fn int_to_string(n: Int) -> String {
 
 pub fn is_valid_command(cmd: String) -> Bool {
   case cmd {
-    "help" | "version" | "status" | "tellme" | "know" | "search" | "remind" | "review" | "reviews" | "tasks" | "models" | "meetings" | "meeting" -> True
+    "help" | "version" | "status" | "tellme" | "know" | "search" | "remind" | "review" | "reviews" | "tasks" | "models" | "meetings" | "meeting" | "backup" | "daemon" -> True
     _ -> False
   }
 }
@@ -311,5 +343,9 @@ pub fn get_help_text() -> String {
   models            List available AI models
   meetings          List active meetings
   meeting say <id> <perspective> Join a meeting with your opinion
-  meeting say <id> --position <pos> <perspective> With position (support/oppose/neutral)"
+  meeting say <id> --position <pos> <perspective> With position (support/oppose/neutral)
+  backup [dir]      Backup current project code to database
+  daemon start      Start backup daemon (auto-backup every 5 min)
+  daemon stop       Stop backup daemon
+  daemon status     Check daemon status"
 }

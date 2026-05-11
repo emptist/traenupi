@@ -40,3 +40,21 @@ export function getKeychainPassword(service) {
     return "";
   }
 }
+
+export function getCwd() {
+  try {
+    const cwd = process.cwd();
+    return { Ok: [cwd] };
+  } catch (error) {
+    return { Error: [error.message] };
+  }
+}
+
+export function stopProcess(pid) {
+  try {
+    process.kill(pid, 'SIGTERM');
+    return { Ok: [] };
+  } catch (error) {
+    return { Error: [error.message] };
+  }
+}

@@ -290,6 +290,7 @@ fn openrouter_chat(
     |> http.with_json_content_type()
     |> http.with_header("HTTP-Referer", "https://traenupi.ai")
     |> http.with_header("X-Title", "TraeNuPI")
+    |> http.with_header("X-OpenRouter-Cache", "false")
     |> http.with_body(body)
 
   use result <- await(http.send(request))

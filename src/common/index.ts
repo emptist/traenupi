@@ -26,3 +26,11 @@ export {
   resetStorage,
   type StorageConfig,
 } from "./storage-enhanced.js";
+
+export {
+  TraeNuPIDatabase,
+  initializeDatabase,
+  getDatabase,
+  resetDatabase,
+  type DbConfig,
+} from "./db-enhanced.js";

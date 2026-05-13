@@ -41,6 +41,21 @@ export function getKeychainPassword(service) {
   }
 }
 
+export function getKeychainPasswordWithAccount(service, account) {
+  try {
+    // Read password from macOS keychain with specific account (safe - never logs the password)
+    const password = execSync(
+      `security find-generic-password -s "${service}" -a "${account}" -w 2>/dev/null`,
+      { encoding: 'utf-8' }
+    ).trim();
+    
+    return password;
+  } catch (error) {
+    // Key not found in keychain or other error
+    return "";
+  }
+}
+
 export function getCwd() {
   try {
     const cwd = process.cwd();

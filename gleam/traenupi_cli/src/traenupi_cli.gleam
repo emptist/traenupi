@@ -156,7 +156,7 @@ fn handle_tellme(question: String, model_opt: option.Option(String)) {
           let or_provider = ai_provider.openrouter(key)
           use or_result <- await(ai_provider.chat_completion(
             or_provider,
-            "anthropic/claude-sonnet-4.6",
+            "qwen/qwen3-next-80b-a3b-instruct:free",
             messages,
             system_prompt,
           ))
@@ -663,12 +663,15 @@ fn get_api_key() -> String {
 
   case keychain_key_traenupi {
     "" -> {
-      let keychain_key_openrouter = get_keychain_password("openrouter")
+      let keychain_key_pspi =
+        get_keychain_password_with_account("openrouter", "psypi")
 
-      case keychain_key_openrouter {
+      case keychain_key_pspi {
         "" -> get_env("OPENROUTER_API_KEY")
         key -> {
-          io.println("🔐 Using API key from Keychain ✓ (service: openrouter)")
+          io.println(
+            "🔐 Using API key from Keychain ✓ (service: openrouter, account: psypi)",
+          )
           key
         }
       }
@@ -688,6 +691,12 @@ fn get_env(key: String) -> String
 
 @external(javascript, "../traenupi_cli_ffi.mjs", "getKeychainPassword")
 fn get_keychain_password(service: String) -> String
+
+@external(javascript, "../traenupi_cli_ffi.mjs", "getKeychainPasswordWithAccount")
+fn get_keychain_password_with_account(
+  service: String,
+  account: String,
+) -> String
 
 @external(javascript, "../traenupi_cli_ffi.mjs", "getCwd")
 fn get_cwd() -> Result(String, String)

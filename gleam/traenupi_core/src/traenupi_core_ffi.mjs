@@ -164,3 +164,359 @@ export function closePostgresPool(pool) {
       .catch(error => resolve({ Error: error.message }));
   });
 }
+
+export function callOpenAIApi(apiKey, baseUrl, model, prompt, maxTokens, temperature) {
+  return new Promise((resolve) => {
+    const https = require('https');
+    
+    const url = baseUrl && baseUrl[0]
+      ? baseUrl[0]
+      : 'https://api.openai.com/v1';
+    
+    const data = JSON.stringify({
+      model: model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+      temperature: temperature,
+    });
+    
+    const options = {
+      hostname: new URL(url).hostname,
+      port: 443,
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Length': data.length,
+      },
+    };
+    
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(body);
+          if (response.choices && response.choices[0]) {
+            resolve({ Ok: response.choices[0].message.content });
+          } else {
+            resolve({ Error: 'Invalid response from OpenAI' });
+          }
+        } catch (error) {
+          resolve({ Error: error.message });
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      resolve({ Error: error.message });
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}
+
+export function callAnthropicApi(apiKey, model, prompt, maxTokens, temperature) {
+  return new Promise((resolve) => {
+    const https = require('https');
+    
+    const data = JSON.stringify({
+      model: model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+    });
+    
+    const options = {
+      hostname: 'api.anthropic.com',
+      port: 443,
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': data.length,
+      },
+    };
+    
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(body);
+          if (response.content && response.content[0]) {
+            resolve({ Ok: response.content[0].text });
+          } else {
+            resolve({ Error: 'Invalid response from Anthropic' });
+          }
+        } catch (error) {
+          resolve({ Error: error.message });
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      resolve({ Error: error.message });
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}
+
+export function callLocalApi(baseUrl, model, prompt, maxTokens, temperature) {
+  return new Promise((resolve) => {
+    const http = require('http');
+    
+    const url = baseUrl && baseUrl[0]
+      ? baseUrl[0]
+      : 'http://localhost:11434';
+    
+    const data = JSON.stringify({
+      model: model,
+      prompt: prompt,
+      options: {
+        num_predict: maxTokens,
+        temperature: temperature,
+      },
+    });
+    
+    const options = {
+      hostname: new URL(url).hostname,
+      port: new URL(url).port || 11434,
+      path: '/api/generate',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': data.length,
+      },
+    };
+    
+    const req = http.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const lines = body.split('\n').filter(line => line.trim());
+          let response = '';
+          for (const line of lines) {
+            const parsed = JSON.parse(line);
+            if (parsed.response) {
+              response += parsed.response;
+            }
+          }
+          resolve({ Ok: response });
+        } catch (error) {
+          resolve({ Error: error.message });
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      resolve({ Error: error.message });
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}
+
+export function callOpenAIChatApi(apiKey, baseUrl, model, messages, maxTokens, temperature) {
+  return new Promise((resolve) => {
+    const https = require('https');
+    
+    const url = baseUrl && baseUrl[0]
+      ? baseUrl[0]
+      : 'https://api.openai.com/v1';
+    
+    const formattedMessages = messages.map(msg => {
+      if (msg.type === 'SystemMessage') {
+        return { role: 'system', content: msg[0] };
+      } else if (msg.type === 'UserMessage') {
+        return { role: 'user', content: msg[0] };
+      } else if (msg.type === 'AssistantMessage') {
+        return { role: 'assistant', content: msg[0] };
+      }
+      return msg;
+    });
+    
+    const data = JSON.stringify({
+      model: model,
+      messages: formattedMessages,
+      max_tokens: maxTokens,
+      temperature: temperature,
+    });
+    
+    const options = {
+      hostname: new URL(url).hostname,
+      port: 443,
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Length': data.length,
+      },
+    };
+    
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(body);
+          if (response.choices && response.choices[0]) {
+            resolve({ Ok: response.choices[0].message.content });
+          } else {
+            resolve({ Error: 'Invalid response from OpenAI' });
+          }
+        } catch (error) {
+          resolve({ Error: error.message });
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      resolve({ Error: error.message });
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}
+
+export function callAnthropicChatApi(apiKey, model, messages, maxTokens, temperature) {
+  return new Promise((resolve) => {
+    const https = require('https');
+    
+    const systemMessage = messages.find(msg => msg.type === 'SystemMessage');
+    const otherMessages = messages.filter(msg => msg.type !== 'SystemMessage');
+    
+    const formattedMessages = otherMessages.map(msg => {
+      if (msg.type === 'UserMessage') {
+        return { role: 'user', content: msg[0] };
+      } else if (msg.type === 'AssistantMessage') {
+        return { role: 'assistant', content: msg[0] };
+      }
+      return msg;
+    });
+    
+    const requestData = {
+      model: model,
+      messages: formattedMessages,
+      max_tokens: maxTokens,
+    };
+    
+    if (systemMessage) {
+      requestData.system = systemMessage[0];
+    }
+    
+    const data = JSON.stringify(requestData);
+    
+    const options = {
+      hostname: 'api.anthropic.com',
+      port: 443,
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': data.length,
+      },
+    };
+    
+    const req = https.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(body);
+          if (response.content && response.content[0]) {
+            resolve({ Ok: response.content[0].text });
+          } else {
+            resolve({ Error: 'Invalid response from Anthropic' });
+          }
+        } catch (error) {
+          resolve({ Error: error.message });
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      resolve({ Error: error.message });
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}
+
+export function callLocalChatApi(baseUrl, model, messages, maxTokens, temperature) {
+  return new Promise((resolve) => {
+    const http = require('http');
+    
+    const url = baseUrl && baseUrl[0]
+      ? baseUrl[0]
+      : 'http://localhost:11434';
+    
+    const formattedMessages = messages.map(msg => {
+      if (msg.type === 'SystemMessage') {
+        return { role: 'system', content: msg[0] };
+      } else if (msg.type === 'UserMessage') {
+        return { role: 'user', content: msg[0] };
+      } else if (msg.type === 'AssistantMessage') {
+        return { role: 'assistant', content: msg[0] };
+      }
+      return msg;
+    });
+    
+    const data = JSON.stringify({
+      model: model,
+      messages: formattedMessages,
+      stream: false,
+      options: {
+        num_predict: maxTokens,
+        temperature: temperature,
+      },
+    });
+    
+    const options = {
+      hostname: new URL(url).hostname,
+      port: new URL(url).port || 11434,
+      path: '/api/chat',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': data.length,
+      },
+    };
+    
+    const req = http.request(options, (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(body);
+          if (response.message && response.message.content) {
+            resolve({ Ok: response.message.content });
+          } else {
+            resolve({ Error: 'Invalid response from local API' });
+          }
+        } catch (error) {
+          resolve({ Error: error.message });
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      resolve({ Error: error.message });
+    });
+    
+    req.write(data);
+    req.end();
+  });
+}

@@ -16,3 +16,6 @@ export {
   type ResolutionResult,
   type ResolveOptions,
 } from "./resolve-id.js";
+
+// Lively-Puter Bridge Integration
+export * from "./lively-puter/index.js";

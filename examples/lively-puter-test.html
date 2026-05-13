@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TraeNuPI - Lively-Puter Integration Test</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 2.5em;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      opacity: 0.9;
+      font-size: 1.1em;
+    }
+
+    .status {
+      background: #f8f9fa;
+      padding: 20px;
+      border-bottom: 1px solid #e9ecef;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status-badge {
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 600;
+      font-size: 0.9em;
+    }
+
+    .status-badge.initializing {
+      background: #fff3cd;
+      color: #856404;
+    }
+
+    .status-badge.ready {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .status-badge.error {
+      background: #f8d7da;
+      color: #721c24;
+    }
+
+    .content {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 20px;
+      padding: 30px;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid #e9ecef;
+      border-radius: 12px;
+      padding: 20px;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .card h2 {
+      color: #495057;
+      margin-bottom: 15px;
+      font-size: 1.3em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .card h2 .icon {
+      font-size: 1.5em;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #6c757d;
+      font-size: 0.9em;
+      font-weight: 600;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ced4da;
+      border-radius: 6px;
+      font-size: 0.95em;
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      background: #6c757d;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .output {
+      margin-top: 15px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 6px;
+      border-left: 4px solid #667eea;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .output.success {
+      border-left-color: #28a745;
+      background: #d4edda;
+    }
+
+    .output.error {
+      border-left-color: #dc3545;
+      background: #f8d7da;
+    }
+
+    .user-info {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 15px;
+    }
+
+    .user-avatar {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 1.5em;
+      font-weight: bold;
+    }
+
+    .user-details {
+      flex: 1;
+    }
+
+    .user-details .username {
+      font-weight: 600;
+      color: #495057;
+      font-size: 1.1em;
+    }
+
+    .user-details .email {
+      color: #6c757d;
+      font-size: 0.9em;
+    }
+
+    .mode-indicator {
+      display: inline-block;
+      padding: 4px 12px;
+      background: #667eea;
+      color: white;
+      border-radius: 12px;
+      font-size: 0.85em;
+      font-weight: 600;
+    }
+
+    .loading {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #ffffff;
+      border-radius: 50%;
+      border-top-color: transparent;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
+</head>
+<body>
+  <!-- Puter SDK -->
+  <script src="https://js.puter.com/v2/"></script>
+  
+  <div class="container">
+    <div class="header">
+      <h1>🚀 TraeNuPI + Lively-Puter</h1>
+      <p>Unified Cloud Services Integration Test</p>
+    </div>
+
+    <div class="status">
+      <div>
+        <strong>Bridge Status:</strong>
+        <span id="status-badge" class="status-badge initializing">Initializing...</span>
+      </div>
+      <div>
+        <strong>Mode:</strong>
+        <span id="mode-indicator" class="mode-indicator">Puter-First</span>
+      </div>
+    </div>
+
+    <div class="content">
+      <!-- Authentication Card -->
+      <div class="card">
+        <h2><span class="icon">🔐</span> Authentication</h2>
+        <div id="auth-container">
+          <button id="sign-in-btn" onclick="signIn()">
+            Sign In with Puter
+          </button>
+        </div>
+        <div id="user-info" class="user-info" style="display: none;">
+          <div class="user-avatar" id="user-avatar">?</div>
+          <div class="user-details">
+            <div class="username" id="user-name">Unknown</div>
+            <div class="email" id="user-email">Not available</div>
+          </div>
+          <button onclick="signOut()" style="width: auto; padding: 8px 16px;">
+            Sign Out
+          </button>
+        </div>
+        <div id="auth-output" class="output" style="display: none;"></div>
+      </div>
+
+      <!-- File System Card -->
+      <div class="card">
+        <h2><span class="icon">📁</span> File System</h2>
+        <div class="form-group">
+          <label>File Path:</label>
+          <input type="text" id="file-path" value="/test.txt" placeholder="/path/to/file.txt">
+        </div>
+        <div class="form-group">
+          <label>Content:</label>
+          <textarea id="file-content" placeholder="File content...">Hello from TraeNuPI!</textarea>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button onclick="writeFile()">Write File</button>
+          <button onclick="readFile()">Read File</button>
+        </div>
+        <div style="margin-top: 10px;">
+          <button onclick="listFiles()">List Files</button>
+        </div>
+        <div id="fs-output" class="output" style="display: none;"></div>
+      </div>
+
+      <!-- AI Chat Card -->
+      <div class="card">
+        <h2><span class="icon">🤖</span> AI Chat</h2>
+        <div class="form-group">
+          <label>Message:</label>
+          <textarea id="ai-message" placeholder="Ask AI anything...">What is the capital of France?</textarea>
+        </div>
+        <button onclick="sendChat()">Send to AI</button>
+        <div id="ai-output" class="output" style="display: none;"></div>
+      </div>
+
+      <!-- Database Card -->
+      <div class="card">
+        <h2><span class="icon">💾</span> Database</h2>
+        <div class="form-group">
+          <label>Key:</label>
+          <input type="text" id="db-key" value="test-key" placeholder="key:name">
+        </div>
+        <div class="form-group">
+          <label>Value (JSON):</label>
+          <textarea id="db-value" placeholder='{"theme": "dark"}'>{"theme": "dark", "language": "en"}</textarea>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <button onclick="dbSet()">Set</button>
+          <button onclick="dbGet()">Get</button>
+        </div>
+        <div id="db-output" class="output" style="display: none;"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize Puter SDK
+    function updateStatus(type, message) {
+      const badge = document.getElementById('status-badge');
+      badge.className = 'status-badge ' + type;
+      badge.textContent = message;
+    }
+
+    function showOutput(elementId, message, isError = false) {
+      const output = document.getElementById(elementId);
+      output.style.display = 'block';
+      output.className = 'output ' + (isError ? 'error' : 'success');
+      output.textContent = message;
+    }
+
+    function showUserInfo(user) {
+      document.getElementById('auth-container').style.display = 'none';
+      document.getElementById('user-info').style.display = 'flex';
+      document.getElementById('user-name').textContent = user.username;
+      document.getElementById('user-email').textContent = user.email || 'No email';
+      document.getElementById('user-avatar').textContent = user.username.charAt(0).toUpperCase();
+    }
+
+    function hideUserInfo() {
+      document.getElementById('auth-container').style.display = 'block';
+      document.getElementById('user-info').style.display = 'none';
+    }
+
+    // Initialize on load
+    async function init() {
+      try {
+        // Check if Puter is loaded
+        if (typeof puter === 'undefined') {
+          throw new Error('Puter SDK not loaded');
+        }
+
+        updateStatus('ready', 'Ready');
+        
+        // Check if already signed in
+        if (puter.auth.isSignedIn()) {
+          const user = await puter.auth.getUser();
+          showUserInfo(user);
+        }
+      } catch (error) {
+        updateStatus('error', 'Error: ' + error.message);
+        console.error('Initialization error:', error);
+      }
+    }
+
+    // Authentication functions
+    async function signIn() {
+      try {
+        await puter.auth.signIn();
+        const user = await puter.auth.getUser();
+        showUserInfo(user);
+        showOutput('auth-output', '✓ Signed in as: ' + user.username);
+      } catch (error) {
+        showOutput('auth-output', '✗ Sign in failed: ' + error.message, true);
+      }
+    }
+
+    async function signOut() {
+      try {
+        await puter.auth.signOut();
+        hideUserInfo();
+        showOutput('auth-output', '✓ Signed out successfully');
+      } catch (error) {
+        showOutput('auth-output', '✗ Sign out failed: ' + error.message, true);
+      }
+    }
+
+    // File system functions
+    async function writeFile() {
+      try {
+        const path = document.getElementById('file-path').value;
+        const content = document.getElementById('file-content').value;
+        await puter.fs.write(path, content);
+        showOutput('fs-output', '✓ File written to: ' + path);
+      } catch (error) {
+        showOutput('fs-output', '✗ Write failed: ' + error.message, true);
+      }
+    }
+
+    async function readFile() {
+      try {
+        const path = document.getElementById('file-path').value;
+        const content = await puter.fs.read(path);
+        showOutput('fs-output', '✓ File content:\n' + content);
+      } catch (error) {
+        showOutput('fs-output', '✗ Read failed: ' + error.message, true);
+      }
+    }
+
+    async function listFiles() {
+      try {
+        const path = '/';
+        const files = await puter.fs.readdir(path);
+        const fileList = files.map(f => `${f.is_dir ? '📁' : '📄'} ${f.name}`).join('\n');
+        showOutput('fs-output', `✓ Files in ${path}:\n${fileList || '(empty)'}`);
+      } catch (error) {
+        showOutput('fs-output', '✗ List failed: ' + error.message, true);
+      }
+    }
+
+    // AI functions
+    async function sendChat() {
+      try {
+        const message = document.getElementById('ai-message').value;
+        
+        showOutput('ai-output', '⏳ Thinking...');
+        
+        const response = await puter.ai.chat(message);
+        
+        showOutput('ai-output', '✓ AI Response:\n' + (response.message?.content || response));
+      } catch (error) {
+        showOutput('ai-output', '✗ AI error: ' + error.message, true);
+      }
+    }
+
+    // Database functions
+    async function dbSet() {
+      try {
+        const key = document.getElementById('db-key').value;
+        const value = document.getElementById('db-value').value;
+        await puter.kv.set(key, value);
+        showOutput('db-output', '✓ Value set for key: ' + key);
+      } catch (error) {
+        showOutput('db-output', '✗ Set failed: ' + error.message, true);
+      }
+    }
+
+    async function dbGet() {
+      try {
+        const key = document.getElementById('db-key').value;
+        const value = await puter.kv.get(key);
+        showOutput('db-output', '✓ Value:\n' + value);
+      } catch (error) {
+        showOutput('db-output', '✗ Get failed: ' + error.message, true);
+      }
+    }
+
+    // Initialize on load
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>

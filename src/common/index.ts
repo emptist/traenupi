@@ -17,5 +17,12 @@ export {
   type ResolveOptions,
 } from "./resolve-id.js";
 
-// Lively-Puter Bridge Integration
 export * from "./lively-puter/index.js";
+
+export {
+  TraeNuPIStorage,
+  initializeStorage,
+  getStorage,
+  resetStorage,
+  type StorageConfig,
+} from "./storage-enhanced.js";

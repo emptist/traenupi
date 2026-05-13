@@ -218,6 +218,10 @@ export function callOpenAIApi(apiKey, baseUrl, model, prompt, maxTokens, tempera
   });
 }
 
+export function getCurrentTime() {
+  return Date.now();
+}
+
 export function callAnthropicApi(apiKey, model, prompt, maxTokens, temperature) {
   return new Promise((resolve) => {
     const https = require('https');
